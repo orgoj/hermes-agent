@@ -2373,6 +2373,17 @@ class MessageEvent:
     # particular key existing.
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # Private completion waiters for infrastructure that must acknowledge an
+    # inbound event only after the full platform processing path finishes.
+    # Ordinary adapters leave this empty.  Futures are deliberately excluded
+    # from metadata because metadata may be logged or persisted.
+    _processing_completion_futures: List["asyncio.Future[ProcessingOutcome]"] = field(
+        default_factory=list, repr=False, compare=False
+    )
+    _hcom_subprocess_env: Dict[str, str] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+
     # Timestamps
     timestamp: datetime = field(default_factory=datetime.now)
     
@@ -2684,6 +2695,28 @@ def _invalidate_pending_stt_cache(event: MessageEvent) -> None:
             delattr(event, attr)
 
 
+def _resolve_processing_completion(
+    event: MessageEvent, outcome: ProcessingOutcome
+) -> None:
+    """Resolve and clear every private completion waiter on *event*."""
+    futures = list(getattr(event, "_processing_completion_futures", []))
+    event._processing_completion_futures = []
+    for future in futures:
+        if not future.done():
+            future.set_result(outcome)
+
+
+def _merge_processing_completion_waiters(
+    target: MessageEvent, incoming: MessageEvent
+) -> None:
+    waiters = getattr(incoming, "_processing_completion_futures", [])
+    if waiters:
+        target._processing_completion_futures.extend(waiters)
+        incoming._processing_completion_futures = []
+    if incoming._hcom_subprocess_env and not target._hcom_subprocess_env:
+        target._hcom_subprocess_env = dict(incoming._hcom_subprocess_env)
+
+
 def merge_pending_message_event(
     pending_messages: Dict[str, MessageEvent],
     session_key: str,
@@ -2710,6 +2743,7 @@ def merge_pending_message_event(
         incoming_has_media = bool(event.media_urls)
 
         if existing_is_photo and incoming_is_photo:
+            _merge_processing_completion_waiters(existing, event)
             existing.media_urls.extend(event.media_urls)
             existing.media_types.extend(event.media_types)
             if event.text:
@@ -2718,6 +2752,7 @@ def merge_pending_message_event(
             return
 
         if existing_has_media or incoming_has_media:
+            _merge_processing_completion_waiters(existing, event)
             if incoming_has_media:
                 existing.media_urls.extend(event.media_urls)
                 existing.media_types.extend(event.media_types)
@@ -2741,9 +2776,15 @@ def merge_pending_message_event(
             and getattr(existing, "message_type", None) == MessageType.TEXT
             and event.message_type == MessageType.TEXT
         ):
+            _merge_processing_completion_waiters(existing, event)
             if event.text:
                 existing.text = f"{existing.text}\n{event.text}" if existing.text else event.text
             return
+
+        # The existing event is being displaced rather than processed.  Its
+        # waiter must complete non-successfully so an external durable queue
+        # does not acknowledge and lose it.
+        _resolve_processing_completion(existing, ProcessingOutcome.CANCELLED)
 
     pending_messages[session_key] = event
 
@@ -5750,6 +5791,18 @@ class BasePlatformAdapter(ABC):
         self._discard_text_debounce(session_key)
         return True
 
+    async def _process_message_with_event_context(
+        self, event: MessageEvent, session_key: str
+    ) -> None:
+        values = getattr(event, "_hcom_subprocess_env", None)
+        if not values:
+            await self._process_message_background(event, session_key)
+            return
+        from gateway.hcom_bridge import scoped_subprocess_env
+
+        with scoped_subprocess_env(values):
+            await self._process_message_background(event, session_key)
+
     def _start_session_processing(
         self,
         event: MessageEvent,
@@ -5767,7 +5820,9 @@ class BasePlatformAdapter(ABC):
         guard = interrupt_event or asyncio.Event()
         self._active_sessions[session_key] = guard
 
-        task = asyncio.create_task(self._process_message_background(event, session_key))
+        task = asyncio.create_task(
+            self._process_message_with_event_context(event, session_key)
+        )
         self._session_tasks[session_key] = task
         try:
             self._background_tasks.add(task)
@@ -5937,6 +5992,7 @@ class BasePlatformAdapter(ABC):
         enabling interruption support.
         """
         if not self._message_handler:
+            _resolve_processing_completion(event, ProcessingOutcome.FAILURE)
             return
 
         coerce_plaintext_gateway_command(event)
@@ -6692,6 +6748,10 @@ class BasePlatformAdapter(ABC):
                 event,
                 ProcessingOutcome.SUCCESS if processing_ok else ProcessingOutcome.FAILURE,
             )
+            _resolve_processing_completion(
+                event,
+                ProcessingOutcome.SUCCESS if processing_ok else ProcessingOutcome.FAILURE,
+            )
 
             # The active drain owns debounce state. If a queue-mode timer has
             # not fired yet, force-flush into _pending_messages here and let
@@ -6724,7 +6784,7 @@ class BasePlatformAdapter(ABC):
                 # Mirror the late-arrival drain pattern below: hand off
                 # to a new task and return so this frame can unwind.
                 drain_task = asyncio.create_task(
-                    self._process_message_background(pending_event, session_key)
+                    self._process_message_with_event_context(pending_event, session_key)
                 )
                 # Hand ownership of the session to the drain task so
                 # stale-lock detection keeps working while it runs.
@@ -6743,6 +6803,7 @@ class BasePlatformAdapter(ABC):
             if current_task is None or current_task not in self._expected_cancelled_tasks:
                 outcome = ProcessingOutcome.FAILURE
             await self._run_processing_hook("on_processing_complete", event, outcome)
+            _resolve_processing_completion(event, outcome)
             raise
         except Exception as e:
             await self._run_processing_hook("on_processing_complete", event, ProcessingOutcome.FAILURE)
@@ -6766,6 +6827,7 @@ class BasePlatformAdapter(ABC):
                     "[%s] Failed to send error notification to user: %s",
                     self.name, notify_err, exc_info=True,
                 )  # Last resort — don't let error reporting crash the handler
+            _resolve_processing_completion(event, ProcessingOutcome.FAILURE)
         finally:
             # Stop typing before any deferred callback work.  Post-delivery
             # callbacks may perform platform I/O; a stuck callback must not
@@ -6849,7 +6911,7 @@ class BasePlatformAdapter(ABC):
                     if _active is not None:
                         _active.clear()
                     drain_task = asyncio.create_task(
-                        self._process_message_background(late_pending, session_key)
+                        self._process_message_with_event_context(late_pending, session_key)
                     )
                     # Hand ownership of the session to the drain task so stale-lock
                     # detection keeps working while it runs.

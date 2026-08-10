@@ -2399,6 +2399,7 @@ from gateway.config import (
     Platform,
     _BUILTIN_PLATFORM_VALUES,
     GatewayConfig,
+    HcomConfig,
     PlatformConfig,
     _getenv,
     load_gateway_config,
@@ -6335,6 +6336,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
         # Track background tasks to prevent garbage collection mid-execution
         self._background_tasks: set = set()
+        self._hcom_bridge = None
 
         # Event-loop liveness heartbeat (#66892): rewritten every 30s while
         # the loop is dispatching. External supervisors use the file mtime /
@@ -11701,6 +11703,18 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         self._schedule_resume_pending_sessions()
         await self._finish_startup_restore()
 
+        hcom_config = getattr(self.config, "hcom", None)
+        if isinstance(hcom_config, HcomConfig) and hcom_config.enabled:
+            from gateway.hcom_bridge import HcomBridge
+
+            self._hcom_bridge = HcomBridge(self, hcom_config)
+            for binding in hcom_config.bridges:
+                self._spawn_supervised(
+                    lambda b=binding: self._hcom_bridge.run_binding(b),
+                    f"hcom_bridge:{binding.identity}",
+                    on_spawn=self._hcom_bridge.track_binding_task,
+                )
+
         # Drain any recovered process watchers (from crash recovery checkpoint)
         try:
             from tools.process_registry import process_registry
@@ -13271,6 +13285,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 "Shutdown phase: all adapters disconnected at +%.2fs",
                 _phase_elapsed(),
             )
+
+            hcom_bridge = getattr(self, "_hcom_bridge", None)
+            if hcom_bridge is not None:
+                await hcom_bridge.shutdown()
 
             for _task in list(self._background_tasks):
                 if _task is self._stop_task:

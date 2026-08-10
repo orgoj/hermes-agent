@@ -27,6 +27,7 @@ import logging
 import copy
 import os
 import shutil
+import subprocess
 import sys
 import json
 import re
@@ -46,6 +47,29 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _notify_hcom_lifecycle(*args: str) -> None:
+    """Best-effort lifecycle callback for sessions launched by ``hcom hermes``."""
+    if not os.environ.get("HCOM_PROCESS_ID", "").strip():
+        return
+    try:
+        result = subprocess.run(
+            ["hcom", *args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode:
+            logger.warning(
+                "hcom lifecycle callback failed (%s): %s",
+                " ".join(args),
+                (result.stderr or "").strip(),
+            )
+    except Exception as exc:
+        logger.warning("hcom lifecycle callback failed (%s): %s", " ".join(args), exc)
 
 # Suppress startup messages for clean CLI experience
 os.environ["HERMES_QUIET"] = "1"  # Our own modules
@@ -17656,6 +17680,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                     app.invalidate()  # Refresh status line
 
                     try:
+                        _notify_hcom_lifecycle("hermes-status", "active")
                         self.chat(user_input, images=submit_images or None, voice_input=is_voice_input)
                     finally:
                         self._agent_running = False
@@ -17730,6 +17755,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                             self._drain_process_notifications("cli-post-turn")
                         except Exception:
                             pass  # Non-fatal — don't break the main loop
+                        _notify_hcom_lifecycle("hermes-status", "listening")
 
                 except Exception as e:
                     logger.warning("process_loop unhandled error (msg may be lost): %s", e)
@@ -17946,6 +17972,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                 _mark_tui_input_modes_active()
                 # Drive the petdex mascot animation (no-op when no pet enabled).
                 self._pet_start_anim()
+                _notify_hcom_lifecycle("hermes-start")
                 app.run()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
@@ -17972,6 +17999,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                 raise
         finally:
             self._should_exit = True
+            _notify_hcom_lifecycle("hermes-stop")
             self._pet_stop_anim()
             # Immediate feedback: prompt_toolkit has just torn down the input
             # box + status bar, so without a line here the terminal sits

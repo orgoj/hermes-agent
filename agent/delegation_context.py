@@ -13,7 +13,7 @@ worker would otherwise inherit that worker's dispatcher identity.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar, Token
 from typing import Iterator, Mapping, MutableMapping
 
@@ -59,7 +59,12 @@ def delegated_child_context(session_id: str | None = None) -> Iterator[None]:
         # deciding whether the compatibility os.environ mirror is safe.
         from gateway.session_context import scoped_current_session_id
 
-        with scoped_current_session_id(session_id):
+        try:
+            from gateway.hcom_bridge import cleared_subprocess_env
+            hcom_scope = cleared_subprocess_env()
+        except Exception:
+            hcom_scope = nullcontext()
+        with scoped_current_session_id(session_id), hcom_scope:
             yield
     finally:
         _DELEGATED_CHILD_CONTEXT.reset(token)
