@@ -79,7 +79,10 @@ upstream  https://github.com/NousResearch/hermes-agent.git
 
 Until Hermes ships a safe diverged-branch update workflow, do not use plain
 `hermes update` from this checkout: it targets `main` and can leave the running
-checkout without the downstream plugin host extensions. Update explicitly:
+checkout without the downstream plugin host extensions. The tracked
+`.hermes-update-blocked` marker enforces this policy for both `hermes update`
+and gateway `/update`; `hermes update --check` remains read-only and allowed.
+Update explicitly:
 
 ```bash
 git status --short

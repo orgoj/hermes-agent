@@ -1,0 +1,2 @@
+This checkout carries downstream plugin runtime changes and must be updated by
+merging upstream/main according to DOWNSTREAM-MAINTENANCE.md.

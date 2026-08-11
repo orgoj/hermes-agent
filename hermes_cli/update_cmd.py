@@ -3827,9 +3827,28 @@ def _normalize_managed_eol(git_cmd, repo_root):
         # Never let line-ending cleanup block an update.
         pass
 
+_UPDATE_BLOCK_MARKER = ".hermes-update-blocked"
+
+
+def _refuse_blocked_checkout_update() -> None:
+    """Stop mutating updates for downstream checkouts that own their merges."""
+    marker = _m().PROJECT_ROOT / _UPDATE_BLOCK_MARKER
+    if not marker.is_file():
+        return
+    print("✗ Automatic Hermes update is disabled for this downstream checkout.")
+    print("  Update it from the source tree instead:")
+    print("    git fetch upstream main")
+    print("    git switch feat/plugin-gateway-runtime")
+    print("    git merge upstream/main")
+    print("  Then follow DOWNSTREAM-MAINTENANCE.md for validation and push.")
+    sys.exit(2)
+
+
 def _cmd_update_impl(args, gateway_mode: bool):
     """Body of ``cmd_update`` — kept separate so the wrapper can always
     restore stdio even on ``sys.exit``."""
+    _refuse_blocked_checkout_update()
+
     # In gateway mode, use file-based IPC for prompts instead of stdin
     gw_input_fn = (
         (lambda prompt, default="": _gateway_prompt(prompt, default))
