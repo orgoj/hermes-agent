@@ -47,6 +47,16 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _notify_cli_lifecycle(hook_name: str, **kwargs: Any) -> None:
+    """Best-effort plugin notification for interactive CLI surface state."""
+    try:
+        from hermes_cli.lifecycle import invoke_hook
+
+        invoke_hook(hook_name, cli_surface="interactive", **kwargs)
+    except Exception as exc:
+        logger.warning("CLI lifecycle hook %s failed: %s", hook_name, exc)
+
 # Suppress startup messages for clean CLI experience
 os.environ["HERMES_QUIET"] = "1"  # Our own modules
 
@@ -17656,6 +17666,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                     app.invalidate()  # Refresh status line
 
                     try:
+                        _notify_cli_lifecycle("on_cli_turn_start")
                         self.chat(user_input, images=submit_images or None, voice_input=is_voice_input)
                     finally:
                         self._agent_running = False
@@ -17730,6 +17741,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                             self._drain_process_notifications("cli-post-turn")
                         except Exception:
                             pass  # Non-fatal — don't break the main loop
+                        _notify_cli_lifecycle("on_cli_turn_end")
 
                 except Exception as e:
                     logger.warning("process_loop unhandled error (msg may be lost): %s", e)
@@ -17946,6 +17958,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                 _mark_tui_input_modes_active()
                 # Drive the petdex mascot animation (no-op when no pet enabled).
                 self._pet_start_anim()
+                _notify_cli_lifecycle("on_cli_ready")
                 app.run()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
@@ -17972,6 +17985,7 @@ class HermesCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
                 raise
         finally:
             self._should_exit = True
+            _notify_cli_lifecycle("on_cli_shutdown")
             self._pet_stop_anim()
             # Immediate feedback: prompt_toolkit has just torn down the input
             # box + status bar, so without a line here the terminal sits

@@ -167,6 +167,12 @@ VALID_HOOKS: Set[str] = {
     "on_skill_lifecycle",
     "subagent_start",
     "subagent_stop",
+    # Interactive CLI lifecycle. These describe surface state rather than an
+    # agent session, so launch integrations can observe readiness accurately.
+    "on_cli_ready",
+    "on_cli_turn_start",
+    "on_cli_turn_end",
+    "on_cli_shutdown",
     # Gateway pre-dispatch hook. Fired once per incoming MessageEvent
     # after the internal-event guard but BEFORE auth/pairing and agent
     # dispatch. Plugins may return a dict to influence flow:
@@ -353,6 +359,7 @@ class LoadedPlugin:
     hooks_registered: List[str] = field(default_factory=list)
     middleware_registered: List[str] = field(default_factory=list)
     commands_registered: List[str] = field(default_factory=list)
+    gateway_services_registered: List[str] = field(default_factory=list)
     enabled: bool = False
     error: Optional[str] = None
     # True for a bundled platform plugin recorded as a deferred (not-yet-
@@ -1228,6 +1235,35 @@ class PluginContext:
         self._manager._hooks.setdefault(hook_name, []).append(callback)
         logger.debug("Plugin %s registered hook: %s", self.manifest.name, hook_name)
 
+    def register_gateway_service(self, name: str, factory: Callable) -> None:
+        """Register a gateway-owned background service factory.
+
+        The factory receives the live ``GatewayRunner`` after platform startup
+        and returns an object with async ``start()`` and ``shutdown()`` methods.
+        Services own their background tasks and must finish them in shutdown.
+        """
+        clean = str(name or "").strip()
+        if not clean:
+            raise ValueError("gateway service name is required")
+        if not callable(factory):
+            raise ValueError(f"gateway service {clean!r} factory must be callable")
+        existing = self._manager._gateway_service_factories.get(clean)
+        if existing is not None:
+            raise ValueError(f"gateway service {clean!r} is already registered")
+        self._manager._gateway_service_factories[clean] = factory
+        logger.debug(
+            "Plugin %s registered gateway service: %s", self.manifest.name, clean
+        )
+
+    def register_gateway_prompt_provider(self, name: str, callback: Callable) -> None:
+        """Register a stable system-prompt contributor for gateway sessions."""
+        clean = str(name or "").strip()
+        if not clean or not callable(callback):
+            raise ValueError("gateway prompt provider requires a name and callback")
+        if clean in self._manager._gateway_prompt_providers:
+            raise ValueError(f"gateway prompt provider {clean!r} is already registered")
+        self._manager._gateway_prompt_providers[clean] = callback
+
     # -- middleware registration -------------------------------------------
 
     def register_middleware(self, kind: str, callback: Callable) -> None:
@@ -1333,6 +1369,8 @@ class PluginManager:
         # ``re.Pattern``, or a constraint dict); ``callback`` is an async
         # function with the slack_bolt signature ``(ack, body, action)``.
         self._slack_action_handlers: List[tuple] = []
+        self._gateway_service_factories: Dict[str, Callable] = {}
+        self._gateway_prompt_providers: Dict[str, Callable] = {}
 
     # -----------------------------------------------------------------------
     # Public
@@ -1363,6 +1401,8 @@ class PluginManager:
             self._portable_mcp_servers.clear()
             self._aux_tasks.clear()
             self._slack_action_handlers.clear()
+            self._gateway_service_factories.clear()
+            self._gateway_prompt_providers.clear()
             self._context_engine = None
         # Set the flag up front as a re-entrancy guard (a plugin's register()
         # can transitively trigger discovery again), but reset it if the sweep
@@ -1948,6 +1988,7 @@ class PluginManager:
                 _mw_counts_before = {
                     kind: len(cbs) for kind, cbs in self._middleware.items()
                 }
+                _services_before = set(self._gateway_service_factories)
                 register_fn(ctx)
                 loaded.tools_registered = [
                     t for t in self._plugin_tool_names
@@ -1966,6 +2007,10 @@ class PluginManager:
                 loaded.commands_registered = [
                     c for c in self._plugin_commands
                     if self._plugin_commands[c].get("plugin") == manifest.name
+                ]
+                loaded.gateway_services_registered = [
+                    name for name in self._gateway_service_factories
+                    if name not in _services_before
                 ]
                 loaded.enabled = True
                 logger.debug(
@@ -2184,6 +2229,14 @@ class PluginManager:
         """
         return list(self._slack_action_handlers)
 
+    def get_gateway_service_factories(self) -> Dict[str, Callable]:
+        """Return a snapshot of plugin gateway service factories."""
+        return dict(self._gateway_service_factories)
+
+    def get_gateway_prompt_providers(self) -> Dict[str, Callable]:
+        """Return session-stable gateway prompt contributors."""
+        return dict(self._gateway_prompt_providers)
+
     # -----------------------------------------------------------------------
     # Introspection
     # -----------------------------------------------------------------------
@@ -2205,6 +2258,7 @@ class PluginManager:
                     "hooks": len(loaded.hooks_registered),
                     "middleware": len(loaded.middleware_registered),
                     "commands": len(loaded.commands_registered),
+                    "gateway_services": len(loaded.gateway_services_registered),
                     "error": loaded.error,
                 }
             )
@@ -2288,6 +2342,16 @@ def discover_plugins(force: bool = False) -> None:
     manifests and reload state in the current process.
     """
     get_plugin_manager().discover_and_load(force=force)
+
+
+def get_gateway_service_factories() -> Dict[str, Callable]:
+    """Return registered gateway background-service factories."""
+    return get_plugin_manager().get_gateway_service_factories()
+
+
+def get_gateway_prompt_providers() -> Dict[str, Callable]:
+    """Return registered gateway system-prompt contributors."""
+    return get_plugin_manager().get_gateway_prompt_providers()
 
 
 def invoke_hook(hook_name: str, **kwargs: Any) -> List[Any]:

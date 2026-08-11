@@ -335,6 +335,7 @@ def register(ctx):
 - Called exactly once at startup
 - `ctx.register_tool()` puts your tool in the registry — the model sees it immediately
 - `ctx.register_hook()` subscribes to lifecycle events
+- `ctx.register_gateway_service()` registers a gateway-owned background service
 - `ctx.register_cli_command()` registers a CLI subcommand (e.g. `hermes my-plugin <subcommand>`)
 - `ctx.register_command()` registers an in-session slash command (e.g. `/myplugin <args>` inside CLI / gateway chat) — see [Register slash commands](#register-slash-commands) below
 - `ctx.dispatch_tool(name, arguments)` — call any other tool (built-in or from another plugin) with the parent agent's context (approvals, credentials, task_id) wired up automatically. Useful from slash-command handlers that need to invoke `terminal`, `read_file`, or any other tool as if the model had called it directly.
@@ -358,6 +359,53 @@ def register(ctx):
 ```
 
 The dispatched tool goes through the normal approval, redaction, and budget pipelines — it's a real tool invocation, not a shortcut around them.
+
+### Register a gateway background service
+
+Plugins that consume an external queue or maintain a long-lived connection can
+register a service without adding a model tool or a platform adapter:
+
+```python
+class ExternalIngress:
+    def __init__(self, gateway):
+        self.gateway = gateway
+
+    async def start(self):
+        self.task = asyncio.create_task(self.listen())
+
+    async def shutdown(self):
+        self.task.cancel()
+        await asyncio.gather(self.task, return_exceptions=True)
+
+    async def listen(self):
+        event = await receive_external_event()
+        outcome = await self.gateway.dispatch_internal_message(
+            source=SessionSource.from_dict(event["origin"]),
+            text=event["text"],
+            user_id=event["sender"],
+            metadata={"external_id": event["id"]},
+            subprocess_env={"EXTERNAL_ROUTE": event["route"]},
+            visible_inbound_text=f"External message from {event['sender']}: {event['text']}",
+        )
+        if outcome is ProcessingOutcome.SUCCESS:
+            await acknowledge(event["id"])
+
+def register(ctx):
+    ctx.register_gateway_service(
+        "external-ingress", lambda gateway: ExternalIngress(gateway)
+    )
+```
+
+The factory runs after gateway platforms are available. Its object must provide
+`start()` and `shutdown()`; Hermes bounds shutdown to ten seconds. Internal
+messages use the destination platform's normal session, queueing, persistence,
+and delivery path. `dispatch_internal_message()` resolves only when that path
+finishes, allowing durable external queues to acknowledge safely. Optional
+`subprocess_env` values are scoped to that turn and cleared for delegated
+children rather than written to process-global environment state.
+`visible_inbound_text` is delivered to the same active channel before the
+turn begins; if that delivery fails, dispatch raises so durable sources can
+retry rather than adding context the user cannot see.
 
 ## Step 6: Test it
 

@@ -452,6 +452,20 @@ def _inject_session_context_env(env: dict) -> None:
             # inherited global so a sibling session's value can't leak in.
             env.pop(var_name, None)
 
+    # Runtime plugins may bind routing values to one gateway turn. Keep them
+    # task-local so concurrent sessions cannot leak into sibling subprocesses.
+    try:
+        from gateway.plugin_context import subprocess_env_values
+
+        plugin_values = subprocess_env_values()
+    except Exception:
+        plugin_values = {}
+    for name, value in plugin_values.items():
+        if value:
+            env[name] = value
+        else:
+            env.pop(name, None)
+
 
 def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = None) -> dict:
     """Filter Hermes-managed secrets from a subprocess environment."""
