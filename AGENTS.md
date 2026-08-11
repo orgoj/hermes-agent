@@ -1,5 +1,12 @@
 # Hermes Agent - Development Guide
 
+> **Downstream branch note:** When working on
+> `feat/plugin-gateway-runtime`, read
+> [`DOWNSTREAM-MAINTENANCE.md`](DOWNSTREAM-MAINTENANCE.md) before changing the
+> plugin runtime, preparing an upstream PR, or running `hermes update`. It
+> records the external consumer, overlapping upstream work, migration plan,
+> and the required fork-update procedure.
+
 Instructions for AI coding assistants and developers working on the hermes-agent codebase.
 
 **Never give up on the right solution.**
