@@ -869,80 +869,6 @@ _PLATFORM_CONNECTED_CHECKERS: dict[Platform, Callable[[PlatformConfig], bool]] =
 }
 
 
-_HCOM_ALLOWED_ENV_KEYS = frozenset({"HCOM_DIR", "HCOM_AGENT_CATALOGS"})
-
-
-@dataclass
-class HcomBridgeConfig:
-    identity: str
-    origin: Dict[str, Any]
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "HcomBridgeConfig":
-        data = _coerce_dict(data)
-        identity = str(data.get("identity") or "").strip()
-        origin = _coerce_dict(data.get("origin"))
-        if not identity:
-            raise ValueError("gateway.hcom bridge identity is required")
-        if not origin.get("platform") or not origin.get("chat_id"):
-            raise ValueError(
-                f"gateway.hcom bridge {identity!r} requires origin.platform and origin.chat_id"
-            )
-        if "delivered_via_upstream_relay" in origin:
-            raise ValueError(
-                "gateway.hcom origin cannot set delivered_via_upstream_relay"
-            )
-        Platform(str(origin["platform"]))
-        return cls(identity=identity, origin=dict(origin))
-
-
-@dataclass
-class HcomConfig:
-    enabled: bool = False
-    executable: str = "hcom"
-    env: Dict[str, str] = field(default_factory=dict)
-    bridges: List[HcomBridgeConfig] = field(default_factory=list)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "HcomConfig":
-        data = _coerce_dict(data)
-        raw_env = _coerce_dict(data.get("env"))
-        if set(raw_env).difference(_HCOM_ALLOWED_ENV_KEYS):
-            raise ValueError(
-                "gateway.hcom.env supports only HCOM_DIR and HCOM_AGENT_CATALOGS"
-            )
-        env = {str(key): str(value) for key, value in raw_env.items() if str(value).strip()}
-        raw_bridges = data.get("bridges") or []
-        if not isinstance(raw_bridges, list):
-            raise ValueError("gateway.hcom.bridges must be a list")
-        bridges = [HcomBridgeConfig.from_dict(item) for item in raw_bridges]
-        identities = [bridge.identity for bridge in bridges]
-        if len(set(identities)) != len(identities):
-            raise ValueError("gateway.hcom bridge identities must be unique")
-        routes = [json.dumps(bridge.origin, sort_keys=True) for bridge in bridges]
-        if len(set(routes)) != len(routes):
-            raise ValueError("gateway.hcom routes must be unique")
-        enabled = _coerce_bool(data.get("enabled"), False)
-        if enabled and bridges and "HCOM_AGENT_CATALOGS" not in env:
-            raise ValueError(
-                "gateway.hcom.env.HCOM_AGENT_CATALOGS is required when bridges are enabled"
-            )
-        return cls(
-            enabled=enabled,
-            executable=str(data.get("executable") or "hcom").strip(),
-            env=env,
-            bridges=bridges,
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "enabled": self.enabled,
-            "executable": self.executable,
-            "env": dict(self.env),
-            "bridges": [asdict(bridge) for bridge in self.bridges],
-        }
-
-
 @dataclass
 class GatewayConfig:
     """
@@ -952,7 +878,6 @@ class GatewayConfig:
     """
     # Platform configurations
     platforms: Dict[Platform, PlatformConfig] = field(default_factory=dict)
-    hcom: HcomConfig = field(default_factory=HcomConfig)
     
     # Session reset policies by type
     default_reset_policy: SessionResetPolicy = field(default_factory=SessionResetPolicy)
@@ -1126,7 +1051,6 @@ class GatewayConfig:
             "platforms": {
                 p.value: c.to_dict() for p, c in self.platforms.items()
             },
-            "hcom": self.hcom.to_dict(),
             "default_reset_policy": self.default_reset_policy.to_dict(),
             "reset_by_type": {
                 k: v.to_dict() for k, v in self.reset_by_type.items()
@@ -1267,7 +1191,6 @@ class GatewayConfig:
 
         return cls(
             platforms=platforms,
-            hcom=HcomConfig.from_dict(data.get("hcom", {})),
             default_reset_policy=default_policy,
             reset_by_type=reset_by_type,
             reset_by_platform=reset_by_platform,
@@ -1410,9 +1333,6 @@ def load_gateway_config() -> GatewayConfig:
                 gw_data["stt_echo_transcripts"] = gateway_section["stt_echo_transcripts"]
 
             gateway_cfg = yaml_cfg.get("gateway")
-
-            if isinstance(gateway_section, dict) and "hcom" in gateway_section:
-                gw_data["hcom"] = gateway_section["hcom"]
 
             if "group_sessions_per_user" in yaml_cfg:
                 gw_data["group_sessions_per_user"] = yaml_cfg["group_sessions_per_user"]

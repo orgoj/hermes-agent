@@ -2380,7 +2380,7 @@ class MessageEvent:
     _processing_completion_futures: List["asyncio.Future[ProcessingOutcome]"] = field(
         default_factory=list, repr=False, compare=False
     )
-    _hcom_subprocess_env: Dict[str, str] = field(
+    _plugin_subprocess_env: Dict[str, str] = field(
         default_factory=dict, repr=False, compare=False
     )
 
@@ -2713,8 +2713,8 @@ def _merge_processing_completion_waiters(
     if waiters:
         target._processing_completion_futures.extend(waiters)
         incoming._processing_completion_futures = []
-    if incoming._hcom_subprocess_env and not target._hcom_subprocess_env:
-        target._hcom_subprocess_env = dict(incoming._hcom_subprocess_env)
+    if incoming._plugin_subprocess_env and not target._plugin_subprocess_env:
+        target._plugin_subprocess_env = dict(incoming._plugin_subprocess_env)
 
 
 def merge_pending_message_event(
@@ -5794,11 +5794,11 @@ class BasePlatformAdapter(ABC):
     async def _process_message_with_event_context(
         self, event: MessageEvent, session_key: str
     ) -> None:
-        values = getattr(event, "_hcom_subprocess_env", None)
+        values = getattr(event, "_plugin_subprocess_env", None)
         if not values:
             await self._process_message_background(event, session_key)
             return
-        from gateway.hcom_bridge import scoped_subprocess_env
+        from gateway.plugin_context import scoped_subprocess_env
 
         with scoped_subprocess_env(values):
             await self._process_message_background(event, session_key)

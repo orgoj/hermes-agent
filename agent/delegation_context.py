@@ -60,11 +60,11 @@ def delegated_child_context(session_id: str | None = None) -> Iterator[None]:
         from gateway.session_context import scoped_current_session_id
 
         try:
-            from gateway.hcom_bridge import cleared_subprocess_env
-            hcom_scope = cleared_subprocess_env()
+            from gateway.plugin_context import cleared_subprocess_env
+            plugin_scope = cleared_subprocess_env()
         except Exception:
-            hcom_scope = nullcontext()
-        with scoped_current_session_id(session_id), hcom_scope:
+            plugin_scope = nullcontext()
+        with scoped_current_session_id(session_id), plugin_scope:
             yield
     finally:
         _DELEGATED_CHILD_CONTEXT.reset(token)

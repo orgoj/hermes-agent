@@ -251,32 +251,6 @@ Semantics are honest at-least-once:
 Disable with `gateway.delivery_ledger: false` in `config.yaml` (restores the
 old behavior: in-flight responses are lost on crash).
 
-### hcom Bridge
-
-The optional hcom bridge routes an hcom identity into an existing gateway
-conversation. Add a bridge to `~/.hermes/config.yaml`; `origin` is the
-`SessionSource` of the destination conversation:
-
-```yaml
-gateway:
-  hcom:
-    enabled: true
-    executable: hcom
-    env:
-      HCOM_DIR: /absolute/path/to/hcom-state
-      HCOM_AGENT_CATALOGS: /absolute/path/to/agents.json
-    bridges:
-      - identity: hermes-gateway
-        origin:
-          platform: telegram
-          chat_id: "123456789"
-          chat_type: dm
-```
-
-Delivery is at least once: Hermes uses hcom's manual-ack mode and acknowledges
-an event only after the platform response attempt succeeds and completion is
-recorded durably, so a crash can cause redelivery but not silent loss.
-
 ### Reset Policies
 
 **By default sessions never auto-reset** — context lives until you `/reset`

@@ -2399,7 +2399,6 @@ from gateway.config import (
     Platform,
     _BUILTIN_PLATFORM_VALUES,
     GatewayConfig,
-    HcomConfig,
     PlatformConfig,
     _getenv,
     load_gateway_config,
@@ -2442,6 +2441,7 @@ from gateway.platforms.base import (
     EphemeralReply,
     MessageEvent,
     MessageType,
+    ProcessingOutcome,
     _prefix_within_utf16_limit,
     _reply_anchor_for_event,
     build_auto_tts_output_path,
@@ -4597,6 +4597,23 @@ class TurnRunner:
         )
         if cfg_channel_prompt:
             combined_ephemeral = (combined_ephemeral + "\n\n" + cfg_channel_prompt).strip()
+        from hermes_cli.plugins import get_gateway_prompt_providers
+        for provider_name, provider in get_gateway_prompt_providers().items():
+            try:
+                contribution = provider(
+                    source=ctx.source,
+                    session_key=ctx.session_key,
+                    gateway=self._runner,
+                )
+            except Exception:
+                logger.warning(
+                    "gateway prompt provider %s failed", provider_name, exc_info=True
+                )
+                continue
+            if contribution:
+                combined_ephemeral = (
+                    combined_ephemeral + "\n\n" + str(contribution).strip()
+                ).strip()
 
         max_iterations = _current_max_iterations()
 
@@ -6336,7 +6353,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
 
         # Track background tasks to prevent garbage collection mid-execution
         self._background_tasks: set = set()
-        self._hcom_bridge = None
+        self._plugin_gateway_services: Dict[str, Any] = {}
 
         # Event-loop liveness heartbeat (#66892): rewritten every 30s while
         # the loop is dispatching. External supervisors use the file mtime /
@@ -6345,6 +6362,91 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         self._loop_heartbeat_task: Optional[asyncio.Task] = None
         self._loop_floor_timer_handle = None
         self._loop_liveness_watchdog = None
+
+    async def dispatch_internal_message(
+        self,
+        *,
+        source: SessionSource,
+        text: str,
+        user_id: str,
+        user_name: str = "",
+        message_id: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+        subprocess_env: Optional[Dict[str, str]] = None,
+        visible_inbound_text: Optional[str] = None,
+    ) -> ProcessingOutcome:
+        """Dispatch trusted plugin ingress through an existing platform session.
+
+        ``visible_inbound_text`` mirrors the external input into the active
+        channel before processing. Delivery failure aborts dispatch so a
+        durable source can retry instead of creating invisible context.
+        """
+        adapter = self._adapter_for_source(source)
+        if adapter is None:
+            raise RuntimeError(
+                f"no live {source.platform.value} adapter for internal message"
+            )
+        if visible_inbound_text:
+            result = await adapter.send(
+                source.chat_id,
+                visible_inbound_text,
+                metadata=self._thread_metadata_for_source(source),
+            )
+            if not getattr(result, "success", False):
+                raise RuntimeError(
+                    f"failed to display internal message on {source.platform.value}"
+                )
+        future: "asyncio.Future[ProcessingOutcome]" = (
+            asyncio.get_running_loop().create_future()
+        )
+        event = MessageEvent(
+            text=text,
+            source=source,
+            user_id=user_id,
+            user_name=user_name or user_id,
+            internal=True,
+            message_id=message_id,
+            metadata=dict(metadata or {}),
+        )
+        event._processing_completion_futures.append(future)
+        event._plugin_subprocess_env = dict(subprocess_env or {})
+        await adapter.handle_message(event)
+        return await future
+
+    async def _start_plugin_gateway_services(self) -> None:
+        from hermes_cli.plugins import get_gateway_service_factories
+
+        for name, factory in get_gateway_service_factories().items():
+            try:
+                service = factory(self)
+                if inspect.isawaitable(service):
+                    service = await service
+                start = getattr(service, "start", None)
+                shutdown = getattr(service, "shutdown", None)
+                if not callable(start) or not callable(shutdown):
+                    raise TypeError(
+                        "gateway service must provide async start() and shutdown()"
+                    )
+                result = start()
+                if inspect.isawaitable(result):
+                    await result
+                self._plugin_gateway_services[name] = service
+            except Exception as exc:
+                logger.warning("Plugin gateway service %s failed to start: %s", name, exc)
+
+    async def _shutdown_plugin_gateway_services(self) -> None:
+        registry = getattr(self, "_plugin_gateway_services", None)
+        if not isinstance(registry, dict):
+            return
+        services = list(registry.items())
+        registry.clear()
+        for name, service in reversed(services):
+            try:
+                result = service.shutdown()
+                if inspect.isawaitable(result):
+                    await asyncio.wait_for(result, timeout=10)
+            except Exception as exc:
+                logger.warning("Plugin gateway service %s failed to stop: %s", name, exc)
 
         # scale-to-zero (Phase 0, F13): gateway-scoped "last inbound seen" clock.
         # There is no such clock today (only a per-agent _last_activity_ts), so the
@@ -11703,17 +11805,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         self._schedule_resume_pending_sessions()
         await self._finish_startup_restore()
 
-        hcom_config = getattr(self.config, "hcom", None)
-        if isinstance(hcom_config, HcomConfig) and hcom_config.enabled:
-            from gateway.hcom_bridge import HcomBridge
-
-            self._hcom_bridge = HcomBridge(self, hcom_config)
-            for binding in hcom_config.bridges:
-                self._spawn_supervised(
-                    lambda b=binding: self._hcom_bridge.run_binding(b),
-                    f"hcom_bridge:{binding.identity}",
-                    on_spawn=self._hcom_bridge.track_binding_task,
-                )
+        await self._start_plugin_gateway_services()
 
         # Drain any recovered process watchers (from crash recovery checkpoint)
         try:
@@ -13083,6 +13175,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             if callable(stop_watchdog):
                 await stop_watchdog()
 
+            await self._shutdown_plugin_gateway_services()
+
             await self._cancel_secondary_profile_reconnect_tasks()
 
             # Notify all chats with active agents BEFORE draining.
@@ -13285,10 +13379,6 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 "Shutdown phase: all adapters disconnected at +%.2fs",
                 _phase_elapsed(),
             )
-
-            hcom_bridge = getattr(self, "_hcom_bridge", None)
-            if hcom_bridge is not None:
-                await hcom_bridge.shutdown()
 
             for _task in list(self._background_tasks):
                 if _task is self._stop_task:

@@ -770,6 +770,51 @@ class TestThreadToolWhitelist:
 class TestPluginContext:
     """Tests for the PluginContext facade."""
 
+    def test_register_gateway_service(self):
+        manager = PluginManager()
+        manifest = PluginManifest(name="runtime-plugin", source="user")
+        ctx = PluginContext(manifest, manager)
+        factory = lambda runner: runner
+
+        ctx.register_gateway_service("external-ingress", factory)
+
+        assert manager.get_gateway_service_factories() == {
+            "external-ingress": factory
+        }
+
+    def test_register_gateway_service_rejects_duplicates(self):
+        manager = PluginManager()
+        ctx = PluginContext(
+            PluginManifest(name="runtime-plugin", source="user"), manager
+        )
+        ctx.register_gateway_service("external-ingress", lambda runner: runner)
+
+        with pytest.raises(ValueError, match="already registered"):
+            ctx.register_gateway_service("external-ingress", lambda runner: runner)
+
+    def test_register_gateway_prompt_provider(self):
+        manager = PluginManager()
+        ctx = PluginContext(
+            PluginManifest(name="runtime-plugin", source="user"), manager
+        )
+        provider = lambda **kwargs: kwargs["session_key"]
+
+        ctx.register_gateway_prompt_provider("runtime-context", provider)
+
+        assert manager.get_gateway_prompt_providers() == {
+            "runtime-context": provider
+        }
+
+    def test_register_gateway_prompt_provider_rejects_duplicates(self):
+        manager = PluginManager()
+        ctx = PluginContext(
+            PluginManifest(name="runtime-plugin", source="user"), manager
+        )
+        ctx.register_gateway_prompt_provider("runtime-context", lambda **_: "")
+
+        with pytest.raises(ValueError, match="already registered"):
+            ctx.register_gateway_prompt_provider("runtime-context", lambda **_: "")
+
 
 
 
