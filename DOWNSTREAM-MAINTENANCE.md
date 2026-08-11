@@ -24,6 +24,17 @@ The clean downstream implementation is commit `ee4b211c5` on
 historical only: its ancestry contains a direct hcom implementation followed
 by its removal. Do not base an upstream PR on that history.
 
+## Current maintenance checkpoint
+
+On 2026-08-11 this branch merged `upstream/main` at `c0106e50e`. The merge
+required one additive conflict resolution in `hermes_cli/plugins.py` because
+upstream inserted background-discovery helpers beside the downstream registry
+exports. Both implementations were retained. The focused core suite passed
+54 tests, the standalone plugin passed 7 tests, Ruff passed for both, and a
+real gateway restart registered `kato` as listening with its process binding.
+Repeat the fresh-session plain-message Telegram E2E before treating this
+checkpoint as fully deployment-validated.
+
 ## Upstream strategy
 
 Do not open the current combined commit as a new upstream PR. Most of its API
@@ -123,4 +134,3 @@ that the accepted implementation preserves a diverged feature branch, brings
 in official upstream changes, leaves the intended branch checked out, and does
 not hard-reset downstream commits. Test it first with `--check`, a clean
 worktree, and recoverable refs before adopting it here.
-
