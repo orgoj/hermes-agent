@@ -31,9 +31,9 @@ required one additive conflict resolution in `hermes_cli/plugins.py` because
 upstream inserted background-discovery helpers beside the downstream registry
 exports. Both implementations were retained. The focused core suite passed
 54 tests, the standalone plugin passed 7 tests, Ruff passed for both, and a
-real gateway restart registered `kato` as listening with its process binding.
-Repeat the fresh-session plain-message Telegram E2E before treating this
-checkpoint as fully deployment-validated.
+real gateway restart registered the configured bridge identity as listening
+with its process binding. Repeat the fresh-session plain-message Telegram E2E
+before treating this checkpoint as fully deployment-validated.
 
 ## Upstream strategy
 
@@ -67,6 +67,33 @@ gateway stop unregisters it; a plain hcom request is visible in the active
 channel; a fresh Hermes session loads the hcom skill and replies with the
 configured identity without running `hcom start`; the inbound user content
 contains no identity or runtime instructions.
+
+### Fresh-session E2E gate
+
+A deployment is valid only when all checks pass:
+
+1. Send `/new` in the mapped messaging channel.
+2. Record the new Hermes session ID and verify it differs from the prior test.
+3. Send a plain hcom request whose body contains no identity, hcom command,
+   lifecycle instruction, or test-specific prohibition.
+4. Verify the inbound persisted user content contains only the hcom envelope
+   metadata and the original message body.
+5. Verify the first relevant agent action loads `hcom-agent-messaging`.
+6. Verify the reply uses exactly one direct
+   `hcom send ... --name <configured identity> -- '<text>'` command.
+7. Verify there is no `hcom start`, `printf`, Base64, or helper encoding call.
+8. Verify the visible inbound message appears in the active channel.
+
+### Before widening the plugin API
+
+Search current upstream issues and PRs before implementing a new extension
+point. Search by the behavior and contract, not only the proposed symbol name.
+At minimum check background services, gateway injection, system prompt
+sections, lifecycle hooks, and subprocess environment propagation.
+
+If overlapping work exists, compare its contract and tests first. Prefer
+adapting the external plugin or contributing to that work over opening a
+parallel API.
 
 ## Maintaining this branch
 
