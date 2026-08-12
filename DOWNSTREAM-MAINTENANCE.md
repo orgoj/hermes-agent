@@ -135,9 +135,26 @@ ruff check \
   tests/hermes_cli/test_plugins.py tools/environments/local.py
 ```
 
-Also run the standalone plugin suite from `orgoj/hermes-hcom-plugin`, restart
-the real gateway, start a new Telegram session, and repeat the plain-message
-E2E before pushing:
+Also run the standalone plugin suite from `orgoj/hermes-hcom-plugin`. Then
+restart -- do not merely start -- the existing gateway and prove that the
+running process was replaced:
+
+```bash
+old_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
+hermes gateway restart
+hermes gateway status
+new_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
+test "$new_pid" != "$old_pid"
+```
+
+Run service-status and journal checks on the host, not inside an isolated
+sandbox without access to the user's D-Bus. Confirm that the configured hcom
+listener belongs to the new gateway process.
+
+Start a new Telegram session and repeat the plain-message E2E before pushing.
+A log line saying `Connecting to Telegram` is not proof of a working Telegram
+connection; require a successful platform-ready/polling signal or an actual
+received test message. Push only after these runtime checks pass:
 
 ```bash
 git push origin feat/plugin-gateway-runtime
