@@ -26,14 +26,18 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-08-11 this branch merged `upstream/main` at `c0106e50e`. The merge
-required one additive conflict resolution in `hermes_cli/plugins.py` because
-upstream inserted background-discovery helpers beside the downstream registry
-exports. Both implementations were retained. The focused core suite passed
-54 tests, the standalone plugin passed 7 tests, Ruff passed for both, and a
-real gateway restart registered the configured bridge identity as listening
-with its process binding. Repeat the fresh-session plain-message Telegram E2E
-before treating this checkpoint as fully deployment-validated.
+On 2026-08-17 this branch merged `upstream/main` at `cecb3a6ed`. The merge
+required additive conflict resolution in the gateway error path, plugin
+manager, downstream update guard, and plugin documentation. The upstream
+ownership ledger, shutdown propagation, Desktop update behavior, and plugin
+state/config documentation were retained alongside the downstream gateway
+service, prompt-provider, internal-dispatch completion, and update-blocking
+contracts. The focused core suite passed 76 tests, the downstream update guard
+passed 2 tests, the standalone plugin passed 7 tests, and Ruff passed for both
+repositories. The gateway restart replaced PID 3068 with PID 277950, the new process owns
+the configured `kato` hcom listener, and Telegram reached polling-ready state.
+Repeat the user-driven fresh-session plain-message Telegram E2E before treating
+this checkpoint as fully deployment-validated.
 
 ## Upstream strategy
 
