@@ -139,16 +139,28 @@ ruff check \
   tests/hermes_cli/test_plugins.py tools/environments/local.py
 ```
 
-Also run the standalone plugin suite from `orgoj/hermes-hcom-plugin`. Then
-restart -- do not merely start -- the existing gateway and prove that the
-running process was replaced:
+Also run the standalone plugin suite from `orgoj/hermes-hcom-plugin` without
+requiring writable cache directories inside that checkout:
+
+```bash
+PYTEST_ADDOPTS="-p no:cacheprovider" pytest -q
+RUFF_CACHE_DIR="${TMPDIR:-/tmp}/hermes-hcom-plugin-ruff" \
+  ruff check __init__.py test_plugin.py
+```
+
+Install into the exact interpreter used by the running service, then restart
+-- do not merely start -- the gateway and prove that the process was replaced
+without silently switching runtimes:
 
 ```bash
 old_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
+runtime_python="$(readlink -f "/proc/$old_pid/exe")"
+uv pip install --python "$runtime_python" -e ".[all,dev]"
 hermes gateway restart
 hermes gateway status
 new_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
 test "$new_pid" != "$old_pid"
+test "$(readlink -f "/proc/$new_pid/exe")" = "$runtime_python"
 ```
 
 Run service-status and journal checks on the host, not inside an isolated
@@ -158,7 +170,10 @@ listener belongs to the new gateway process.
 Start a new Telegram session and repeat the plain-message E2E before pushing.
 A log line saying `Connecting to Telegram` is not proof of a working Telegram
 connection; require a successful platform-ready/polling signal or an actual
-received test message. Push only after these runtime checks pass:
+received test message. If this requires a user-originated platform message,
+stop before pushing and ask the user to send `/new` followed by the plain test
+message. A passing unit suite, successful restart, and polling-ready signal do
+not waive this gate. Push only after these runtime checks pass:
 
 ```bash
 git push origin feat/plugin-gateway-runtime
