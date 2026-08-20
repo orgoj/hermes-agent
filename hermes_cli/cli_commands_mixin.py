@@ -88,8 +88,19 @@ class CLICommandsMixin:
         args = filtered
 
         if not args:
-            # List checkpoints
+            # List checkpoints — fall back to the cross-project view when the
+            # current directory has none (#10505, reapply of PR #10633 by
+            # @nightq). The Aug 2026 QA sweep hit this live: writes landed
+            # checkpoints under the session cwd (/tmp/qa-repo) while bare
+            # /rollback searched only TERMINAL_CWD's project and reported
+            # "No checkpoints found" despite fresh checkpoints existing.
             checkpoints = mgr.list_checkpoints(cwd)
+            if not checkpoints:
+                all_checkpoints = mgr.list_all_checkpoints()
+                if all_checkpoints:
+                    print(f"  No checkpoints for {cwd} — showing all directories.")
+                    print(format_checkpoint_list(all_checkpoints, "all directories"))
+                    return
             print(format_checkpoint_list(checkpoints, cwd))
             return
 
@@ -950,6 +961,14 @@ class CLICommandsMixin:
                 _cprint(f"  ↻ Handoff complete. The session is now active on {platform_name}.")
                 _cprint(f"  Resume it on this CLI later with: /resume {session_title}")
                 _cprint("")
+                # Mark this session as handed off so _run_cleanup does NOT
+                # finalize it on CLI exit.  The gateway reopened the session
+                # row and now owns its lifecycle; a CLI cleanup finalize would
+                # set end_reason on the row the gateway is actively writing
+                # to, causing the handoff leg to vanish from session history
+                # and session_search (#88234).
+                from cli import _handed_off_session_ids
+                _handed_off_session_ids.add(self.session_id)
                 # End the CLI cleanly — same exit semantics as /quit.
                 self._should_exit = True
                 return False
@@ -1605,11 +1624,23 @@ class CLICommandsMixin:
         concept = parts[1].strip() if len(parts) > 1 else ""
 
         if not concept:
-            try:
-                concept = input("(o_o) Describe your pet: ").strip()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return
+            # Bare /hatch is dispatched from the process_loop daemon thread
+            # while prompt_toolkit owns stdin — a raw input() here types into
+            # a prompt that never renders and swallows the next keystrokes
+            # (same class as #23185; found in the Aug 2026 full-surface CLI
+            # QA sweep: bare /hatch left the session eating input until
+            # Ctrl+C). Route through the thread-aware prompt helper, which
+            # uses run_in_terminal on the main thread and cancels cleanly
+            # (None) when prompting isn't safe.
+            prompt_helper = getattr(self, "_prompt_text_input", None)
+            if callable(prompt_helper):
+                concept = (prompt_helper("(o_o) Describe your pet: ") or "").strip()
+            else:
+                try:
+                    concept = input("(o_o) Describe your pet: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    return
 
         if not concept:
             print("(o_o) Usage: /hatch <description>  (e.g. /hatch a tiny cyber fox)")
@@ -2753,10 +2784,24 @@ class CLICommandsMixin:
                 _cprint(f"  {_DIM}No goal to resume.{_RST}")
             else:
                 _cprint(f"  ▶ Goal resumed: {state.goal}")
-                _cprint(
-                    f"  {_DIM}Send any message (or press Enter on an empty prompt "
-                    f"is a no-op; type 'continue' to kick it off).{_RST}"
-                )
+                # Resume must restart work, not just flip persisted state
+                # (#75362): queue the canonical continuation prompt the same
+                # way /goal <text> queues its kickoff, so the loop takes the
+                # next step without the user sending another message.
+                prompt = mgr.next_continuation_prompt()
+                queued = False
+                if prompt:
+                    try:
+                        self._pending_input.put(prompt)
+                        queued = True
+                    except Exception:
+                        pass
+                if queued:
+                    _cprint(f"  {_DIM}Continuing now — taking the next step.{_RST}")
+                else:
+                    _cprint(
+                        f"  {_DIM}Send any message to kick off the next step.{_RST}"
+                    )
             return
 
         if lower in {"clear", "stop", "done"}:

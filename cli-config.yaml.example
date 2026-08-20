@@ -132,6 +132,14 @@ model:
   #       CF-Access-Client-Id: "xxxx.access"
   #       CF-Access-Client-Secret: "${CF_ACCESS_SECRET}"
   #       X-Client-Name: "hermes-agent"
+# providers:
+#   meta:
+#     base_url: https://api.meta.ai/v1
+#     api_key: ${MODEL_API_KEY}
+#     # api_mode auto-detected as codex_responses for api.meta.ai; no need to set
+#     # (the bundled meta-ai provider covers this — a named custom provider is
+#     # only needed for a non-default Meta-compatible endpoint)
+
 
 # Command-minted credentials (optional): key_cmd
 # ------------------------------------------------------------------
@@ -662,6 +670,19 @@ compression:
 
   # To pin a specific model/provider for compression summaries, use the
   # auxiliary section below (auxiliary.compression.provider / model).
+
+# =============================================================================
+# Tool-result budget (optional)
+# =============================================================================
+# Controls when a large tool result is spilled to disk (full output saved to
+# $HERMES_HOME/cache/spillover, preview + path kept in context). MCP tool
+# results (tools named mcp_*) spill at a tighter 50,000-char threshold than
+# the generic 100K default: MCP servers routinely return un-paginated 20-50K
+# payloads that bloat context and slow every subsequent turn. Nothing is
+# lost — the full result is on disk and readable with read_file.
+#
+# tool_budget:
+#   mcp_result_size_chars: 50000   # per-result spillover threshold for mcp_* tools
 
 # =============================================================================
 # Anthropic prompt caching TTL
