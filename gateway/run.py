@@ -9203,6 +9203,48 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             overflow.insert(0, next_queued)
         return pending_event
 
+    def _dequeue_inband_pending_event(
+        self,
+        session_key: str,
+        adapter: Any,
+    ) -> Optional["MessageEvent"]:
+        """Return a pending event that is safe to process inside this turn.
+
+        Events with processing-completion waiters represent durable external
+        ingress such as a plugin gateway message.  Their waiter may only be
+        resolved by ``BasePlatformAdapter`` after the response is delivered.
+        The in-band recursive drain below bypasses that delivery boundary, so
+        leave such an event in the adapter slot for its normal follow-up task.
+        """
+        pending_event = _dequeue_pending_event(adapter, session_key)
+        if self._restore_delivery_owned_event(session_key, adapter, pending_event):
+            return None
+
+        pending_event = self._promote_queued_event(
+            session_key,
+            adapter,
+            pending_event,
+        )
+        if self._restore_delivery_owned_event(session_key, adapter, pending_event):
+            return None
+        return pending_event
+
+    @staticmethod
+    def _restore_delivery_owned_event(
+        session_key: str,
+        adapter: Any,
+        event: Optional["MessageEvent"],
+    ) -> bool:
+        """Restore an event whose completion depends on adapter delivery."""
+        if event is None or not getattr(event, "_processing_completion_futures", None):
+            return False
+        adapter._pending_messages[session_key] = event
+        logger.debug(
+            "Deferring completion-aware pending event for adapter delivery: %s",
+            session_key,
+        )
+        return True
+
     def _queue_depth(self, session_key: str, *, adapter: Any = None) -> int:
         """Total pending /queue items for a session — slot + overflow."""
         _q_state = self._peek_session_state(session_key)
@@ -29684,14 +29726,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             pending_event = None
             pending = None
             if result and adapter and session_key:
-                pending_event = _dequeue_pending_event(adapter, session_key)
-                # /queue overflow: after consuming the adapter's "next-up"
-                # slot, promote the next queued event into it so the
-                # recursive run's drain will see it.  This keeps the slot
-                # occupied for the full FIFO chain, which (a) preserves
-                # order, and (b) causes any mid-chain /queue to correctly
-                # route to overflow rather than jumping the queue.
-                pending_event = self._promote_queued_event(session_key, adapter, pending_event)
+                pending_event = self._dequeue_inband_pending_event(session_key, adapter)
+                # The helper also promotes /queue overflow while preserving
+                # FIFO order. Completion-aware plugin ingress stays in the
+                # adapter slot so delivery can resolve its waiter.
                 if result.get("interrupted") and not pending_event and result.get("interrupt_message"):
                     interrupt_message = result.get("interrupt_message")
                     if _is_control_interrupt_message(interrupt_message):

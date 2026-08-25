@@ -169,6 +169,71 @@ class TestQueueConsumptionAfterCompletion:
         # gets the next-in-line item.
         assert adapter._pending_messages[session_key].text == "Q2"
 
+    def test_inband_drain_defers_event_with_processing_completion_waiter(self):
+        """Plugin ingress must return to the adapter's delivery-owned drain."""
+        from gateway.run import GatewayRunner
+
+        runner = GatewayRunner.__new__(GatewayRunner)
+        runner._queued_events = {}
+        adapter = _StubAdapter()
+        session_key = "telegram:user:plugin"
+        event = MessageEvent(
+            text="plugin message",
+            message_type=MessageType.TEXT,
+            source=MagicMock(),
+            message_id="plugin-1",
+        )
+        completion_waiter = object()
+        event._processing_completion_futures.append(completion_waiter)
+        adapter._pending_messages[session_key] = event
+
+        returned = runner._dequeue_inband_pending_event(session_key, adapter)
+
+        assert returned is None
+        assert adapter._pending_messages[session_key] is event
+        assert event._processing_completion_futures == [completion_waiter]
+
+    def test_inband_drain_defers_promoted_completion_aware_overflow(self):
+        """A delivery-owned event remains safe when promoted from overflow."""
+        from gateway.run import GatewayRunner
+
+        runner = GatewayRunner.__new__(GatewayRunner)
+        runner._queued_events = {}
+        adapter = _StubAdapter()
+        session_key = "telegram:user:plugin-overflow"
+        event = MessageEvent(
+            text="plugin overflow",
+            message_type=MessageType.TEXT,
+            source=MagicMock(),
+            message_id="plugin-2",
+        )
+        event._processing_completion_futures.append(object())
+        runner._queued_events[session_key] = [event]
+
+        returned = runner._dequeue_inband_pending_event(session_key, adapter)
+
+        assert returned is None
+        assert adapter._pending_messages[session_key] is event
+        assert runner._queued_events.get(session_key, []) == []
+
+    def test_inband_drain_keeps_ordinary_pending_behavior(self):
+        from gateway.run import GatewayRunner
+
+        runner = GatewayRunner.__new__(GatewayRunner)
+        runner._queued_events = {}
+        adapter = _StubAdapter()
+        session_key = "telegram:user:ordinary"
+        event = MessageEvent(
+            text="ordinary follow-up",
+            message_type=MessageType.TEXT,
+            source=MagicMock(),
+            message_id="ordinary-1",
+        )
+        adapter._pending_messages[session_key] = event
+
+        assert runner._dequeue_inband_pending_event(session_key, adapter) is event
+        assert session_key not in adapter._pending_messages
+
 
 class TestBusyInputModeQueueFifo:
     """Regression coverage for issue #28503.
@@ -218,5 +283,3 @@ class TestBusyInputModeQueueFifo:
             "five",
         ]
         assert runner._queue_depth(session_key, adapter=adapter) == len(texts)
-
-
