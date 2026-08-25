@@ -26,18 +26,25 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-08-17 this branch merged `upstream/main` at `cecb3a6ed`. The merge
-required additive conflict resolution in the gateway error path, plugin
-manager, downstream update guard, and plugin documentation. The upstream
-ownership ledger, shutdown propagation, Desktop update behavior, and plugin
-state/config documentation were retained alongside the downstream gateway
-service, prompt-provider, internal-dispatch completion, and update-blocking
-contracts. The focused core suite passed 76 tests, the downstream update guard
-passed 2 tests, the standalone plugin passed 7 tests, and Ruff passed for both
-repositories. The gateway restart replaced PID 3068 with PID 277950, the new process owns
-the configured `kato` hcom listener, and Telegram reached polling-ready state.
-Repeat the user-driven fresh-session plain-message Telegram E2E before treating
-this checkpoint as fully deployment-validated.
+On 2026-08-25 this branch merged `upstream/main` at `76e306c458` without
+conflicts (merge commit `f520763a9d`). An API-by-API audit found that upstream's
+system-prompt sections and accepted message-injection API do not replace the
+route-aware prompt provider, completion-before-ack dispatch, gateway service
+lifecycle, or task-local subprocess environment required by the standalone
+hcom plugin, so those downstream contracts remain.
+
+Commit `237fff02e2` adds exact persisted-session dispatch and uses the visible
+platform message ID as the reply anchor. Standalone plugin commit `625937c`
+durably correlates successful outbound hcom threads with their originating
+Hermes session and fails closed instead of falling back to a root chat. The
+focused Hermes suite passed 160 tests, the plugin suite passed 11 tests, and
+Ruff passed for both repositories. Deployment replaced gateway PID 3043; the
+current PID 792802 owns the `kato` listener and Telegram reports healthy
+polling. A real correlated event (`39316`) persisted in topic session
+`20260825_103957_50c862fa` (`thread_id=29597`), completed and delivered without
+the former invalid-reply fallback. Michael explicitly waived the manual
+two-new-topic exercise for this checkpoint; the automated interleaved
+two-session coverage plus normal operation is the accepted validation gate.
 
 ## Upstream strategy
 
@@ -47,8 +54,8 @@ surface overlaps active, more complete upstream work:
 | Downstream need | Upstream work to watch |
 | --- | --- |
 | Background services | [PR #63721](https://github.com/NousResearch/hermes-agent/pull/63721) |
-| Internal gateway injection | [PR #83710](https://github.com/NousResearch/hermes-agent/pull/83710), [issue #65448](https://github.com/NousResearch/hermes-agent/issues/65448) |
-| Stable plugin prompt context | [PR #81986](https://github.com/NousResearch/hermes-agent/pull/81986), [issue #64167](https://github.com/NousResearch/hermes-agent/issues/64167) |
+| Internal gateway injection | Merged [PR #84929](https://github.com/NousResearch/hermes-agent/pull/84929) (asynchronous acceptance only); [PR #83710](https://github.com/NousResearch/hermes-agent/pull/83710) remains open |
+| Stable plugin prompt context | Merged [PR #81986](https://github.com/NousResearch/hermes-agent/pull/81986), but its session info does not include source/thread routing |
 | Cross-surface lifecycle contract | [issue #67798](https://github.com/NousResearch/hermes-agent/issues/67798) |
 
 The likely unique contributions are task-local subprocess environment
