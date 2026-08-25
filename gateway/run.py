@@ -7282,7 +7282,8 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
     async def dispatch_internal_message(
         self,
         *,
-        source: SessionSource,
+        source: Optional[SessionSource] = None,
+        session_key: str = "",
         text: str,
         user_id: str,
         user_name: str = "",
@@ -7293,15 +7294,30 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
     ) -> ProcessingOutcome:
         """Dispatch trusted plugin ingress through an existing platform session.
 
+        ``session_key`` pins dispatch to an exact persisted conversation route.
+        Callers handling correlated external replies should prefer it over a
+        static ``source`` so topic/thread identity survives gateway restarts.
+
         ``visible_inbound_text`` mirrors the external input into the active
         channel before processing. Delivery failure aborts dispatch so a
         durable source can retry instead of creating invisible context.
         """
+        pinned_session_id = ""
+        if session_key:
+            entry = await self.async_session_store.lookup_by_session_key(session_key)
+            if entry is None or entry.origin is None:
+                raise RuntimeError(f"internal message session is unavailable: {session_key}")
+            source = dataclasses.replace(entry.origin)
+            pinned_session_id = entry.session_id
+        elif source is None:
+            raise ValueError("dispatch_internal_message requires source or session_key")
+
         adapter = self._adapter_for_source(source)
         if adapter is None:
             raise RuntimeError(
                 f"no live {source.platform.value} adapter for internal message"
             )
+        platform_message_id = ""
         if visible_inbound_text:
             result = await adapter.send(
                 source.chat_id,
@@ -7312,6 +7328,17 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 raise RuntimeError(
                     f"failed to display internal message on {source.platform.value}"
                 )
+            platform_message_id = str(getattr(result, "message_id", "") or "")
+
+        event_metadata = dict(metadata or {})
+        if session_key:
+            event_metadata.update(
+                {
+                    "gateway_session_key": session_key,
+                    "gateway_session_id": pinned_session_id,
+                    "gateway_session_strict": True,
+                }
+            )
         future: "asyncio.Future[ProcessingOutcome]" = (
             asyncio.get_running_loop().create_future()
         )
@@ -7321,8 +7348,11 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             user_id=user_id,
             user_name=user_name or user_id,
             internal=True,
-            message_id=message_id,
-            metadata=dict(metadata or {}),
+            # This ID is a platform reply anchor.  External-system event IDs
+            # belong in metadata and must never be sent to Telegram as
+            # reply_to_message_id.
+            message_id=platform_message_id or message_id,
+            metadata=event_metadata,
         )
         event._processing_completion_futures.append(future)
         event._plugin_subprocess_env = dict(subprocess_env or {})

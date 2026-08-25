@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -52,10 +53,10 @@ async def test_internal_dispatch_displays_external_input_before_processing():
     class Adapter:
         async def send(self, chat_id, text, metadata=None):
             calls.append(("send", chat_id, text, metadata))
-            return type("Result", (), {"success": True})()
+            return type("Result", (), {"success": True, "message_id": "901"})()
 
         async def handle_message(self, event):
-            calls.append(("handle", event.text))
+            calls.append(("handle", event.text, event.message_id))
             _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
 
     runner = object.__new__(GatewayRunner)
@@ -80,8 +81,69 @@ async def test_internal_dispatch_displays_external_input_before_processing():
             "External message from @nova: hello",
             {"thread_id": "topic-1"},
         ),
-        ("handle", "internal envelope"),
+        ("handle", "internal envelope", "901"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_internal_dispatch_resolves_exact_session_route_and_pins_it():
+    from gateway.run import GatewayRunner
+    from gateway.session import SessionSource
+
+    observed = {}
+    source = SessionSource.from_dict(
+        {
+            "platform": "telegram",
+            "chat_id": "123",
+            "chat_type": "dm",
+            "thread_id": "topic-2",
+        }
+    )
+
+    class Store:
+        def lookup_by_session_key(self, session_key):
+            assert session_key == "agent:main:telegram:dm:123:topic-2"
+            return SimpleNamespace(session_id="session-2", origin=source)
+
+    class Adapter:
+        async def send(self, chat_id, text, metadata=None):
+            observed["send"] = (chat_id, text, metadata)
+            return SimpleNamespace(success=True, message_id="telegram-902")
+
+        async def handle_message(self, event):
+            observed["event"] = event
+            _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
+
+    runner = object.__new__(GatewayRunner)
+    runner.session_store = Store()
+    runner._adapter_for_source = lambda _source: Adapter()
+    runner._thread_metadata_for_source = lambda resolved: {
+        "thread_id": resolved.thread_id
+    }
+
+    outcome = await runner.dispatch_internal_message(
+        session_key="agent:main:telegram:dm:123:topic-2",
+        text="correlated reply",
+        user_id="nova",
+        metadata={"hcom": {"event_id": 42}},
+        visible_inbound_text="visible reply",
+    )
+
+    assert outcome is ProcessingOutcome.SUCCESS
+    assert observed["send"] == (
+        "123",
+        "visible reply",
+        {"thread_id": "topic-2"},
+    )
+    event = observed["event"]
+    assert event.source.thread_id == "topic-2"
+    assert event.message_id == "telegram-902"
+    assert event.metadata == {
+        "hcom": {"event_id": 42},
+        "gateway_session_key": "agent:main:telegram:dm:123:topic-2",
+        "gateway_session_id": "session-2",
+        "gateway_session_strict": True,
+    }
 
 
 @pytest.mark.asyncio
