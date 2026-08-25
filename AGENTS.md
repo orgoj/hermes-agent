@@ -1509,6 +1509,15 @@ while the agent is blocked (e.g. approval prompts) MUST bypass BOTH
 guards and be dispatched inline, not via `_process_message_background()`
 (which races session lifecycle).
 
+### Completion-aware pending events are adapter-delivery-owned
+A `MessageEvent` with `_processing_completion_futures` represents durable
+external ingress whose completion may be resolved only after platform
+delivery. An in-band `_run_agent_inner` drain must not consume it recursively:
+model processing is not delivery. Leave it in the adapter pending slot for
+`BasePlatformAdapter`, or explicitly transfer every waiter to a path that
+resolves it after `send()`. Any new pending-event dequeue path needs regression
+coverage for this invariant.
+
 ### Streaming delivery contract (stream-is-the-message adapters) — duplicate-final class
 Adapters with `draft_stream_is_message = True` (relay Slack native streaming)
 keep ONE cumulative native stream per turn; the stream IS the final message.
