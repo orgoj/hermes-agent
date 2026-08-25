@@ -1048,7 +1048,7 @@ class CLICommandsMixin:
         session_meta = self._session_db.get_session(target_id)
         if not session_meta:
             _cprint(f"  Session not found: {target}")
-            _cprint("  Use /history or `hermes sessions list` to see available sessions.")
+            _cprint("  Use /sessions or `hermes sessions list` to see available sessions.")
             return
 
         # If the target is the empty head of a compression chain, redirect to
@@ -1219,18 +1219,23 @@ class CLICommandsMixin:
         self._handle_resume_command(f"/resume {arg}")
 
     def _handle_worktree_command(self, cmd_original: str) -> None:
-        """Handle /worktree — inspect or create isolated git worktrees.
+        """Handle /worktree — inspect, create, or reclaim isolated git worktrees.
 
         Syntax:
-            /worktree              — show the active worktree (if any)
-            /worktree new [name]   — create a worktree and move this session into it
-            /worktree list         — list worktrees under the repo's .worktrees/
+            /worktree                  — show the active worktree (if any)
+            /worktree new [name]       — create a worktree and move this session into it
+            /worktree list             — list worktrees under the repo's .worktrees/
+            /worktree prune [--dry-run] — reclaim safe trees + merged branches
 
         Inspired by Copilot CLI's ``/worktree new``: start isolated work in a
         fresh worktree without leaving the session. Creating one retargets the
         terminal/file tools (``TERMINAL_CWD`` + process cwd) at the new tree;
         the launcher's exit cleanup applies (kept only when it has unpushed
         commits, same as ``hermes -w``).
+
+        ``prune`` is the same attended reclaim as ``hermes worktree prune``
+        (hermes_cli/worktree_gc.py): never deletes tracked changes, unique
+        unpushed commits, or in-use trees; archives untracked-only scratch.
         """
         import subprocess
 
@@ -1250,8 +1255,48 @@ class CLICommandsMixin:
                 print("  No active worktree for this session.")
             if repo_root:
                 print("  /worktree new [name] — create one and move this session into it")
+                print("  /worktree prune      — reclaim stale trees and merged branches")
             else:
                 print("  (not inside a git repository)")
+            return
+
+        if sub in {"prune", "gc", "clean"}:
+            if not repo_root:
+                print("  Not inside a git repository.")
+                return
+            rest = parts[2].strip().lower() if len(parts) > 2 else ""
+            dry_run = "--dry-run" in rest or "-n" in rest.split()
+            from hermes_cli import worktree_gc
+
+            active = _cli._active_worktree
+            tree_records = worktree_gc.audit_worktrees(repo_root, with_sizes=False)
+            if active:
+                # Never reap the tree this very session is sitting in, even
+                # if a concurrent audit would judge it clean+merged.
+                active_path = str(active.get("path") or "")
+                tree_records = [
+                    record for record in tree_records
+                    if record.path != active_path
+                ]
+            actions = worktree_gc.reclaim_worktrees(
+                repo_root, dry_run=dry_run, records=tree_records
+            )
+            actions += worktree_gc.reclaim_branches(repo_root, dry_run=dry_run)
+            if actions:
+                for line in actions:
+                    print(f"  {line}")
+                print(f"  {len(actions)} action(s) {'planned' if dry_run else 'done'}.")
+            else:
+                print("  Nothing to reclaim — remaining trees/branches carry real work.")
+            kept = [
+                record for record in tree_records
+                if record.verdict == "keep"
+                and "kanban" not in record.reason and "in use" not in record.reason
+            ]
+            if kept:
+                print(f"  Preserved {len(kept)} tree(s) with real work:")
+                for record in kept:
+                    print(f"    {record.name}: {record.reason}")
             return
 
         if sub in {"list", "ls"}:
@@ -2732,6 +2777,38 @@ class CLICommandsMixin:
             f"  ⚗ Reviewing this conversation in the background{tail} — "
             f"any memory/skill updates will be reported when done."
         )
+
+    def _handle_review_command(self, cmd: str) -> None:
+        """Dispatch /review — spawn an independent reviewer subagent.
+
+        Snapshots the last N chat messages, wraps them (plus any argument
+        text as extra instructions) in a reviewer briefing, and dispatches a
+        full-privilege background subagent via the async delegation rail.
+        The review re-enters this session as a normal async-delegation
+        completion, addressed to the primary agent.
+        """
+        from cli import _DIM, _RST, _cprint
+
+        parts = (cmd or "").strip().split(None, 1)
+        prompt = parts[1].strip() if len(parts) > 1 else ""
+
+        agent = getattr(self, "agent", None)
+        if agent is None:
+            _cprint(f"  {_DIM}Nothing to review yet — send a message first.{_RST}")
+            return
+
+        snapshot = list(getattr(self, "conversation_history", None) or [])
+        try:
+            from agent.review_engine import format_dispatch_note, start_review
+
+            result = start_review(agent, snapshot, prompt)
+        except ValueError as exc:
+            _cprint(f"  {_DIM}{exc}{_RST}")
+            return
+        except Exception as exc:
+            _cprint(f"  /review failed to start: {exc}")
+            return
+        _cprint(f"  {format_dispatch_note(result, prompt)}")
 
     def _handle_goal_command(self, cmd: str) -> None:
         """Dispatch /goal subcommands: set / draft / show / gate / status / pause / resume / clear."""
