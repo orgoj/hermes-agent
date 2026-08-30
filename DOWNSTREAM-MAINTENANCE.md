@@ -26,25 +26,27 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-08-25 this branch merged `upstream/main` at `76e306c458` without
-conflicts (merge commit `f520763a9d`). An API-by-API audit found that upstream's
-system-prompt sections and accepted message-injection API do not replace the
-route-aware prompt provider, completion-before-ack dispatch, gateway service
-lifecycle, or task-local subprocess environment required by the standalone
-hcom plugin, so those downstream contracts remain.
+On 2026-08-30 `main` merged `upstream/main` at `5cc1369fa2` (merge commit
+`c1bb1bfcef`). An API-by-API audit confirmed that upstream's platform handler
+generalization and hook timeout scoping do not yet replace the route-aware
+prompt provider, completion-before-ack dispatch, gateway service lifecycle, or
+task-local subprocess environment required by the standalone hcom plugin.
 
-Commit `237fff02e2` adds exact persisted-session dispatch and uses the visible
-platform message ID as the reply anchor. Standalone plugin commit `625937c`
-durably correlates successful outbound hcom threads with their originating
-Hermes session and fails closed instead of falling back to a root chat. The
-focused Hermes suite passed 160 tests, the plugin suite passed 11 tests, and
-Ruff passed for both repositories. Deployment replaced gateway PID 3043; the
-current PID 792802 owns the `kato` listener and Telegram reports healthy
-polling. A real correlated event (`39316`) persisted in topic session
-`20260825_103957_50c862fa` (`thread_id=29597`), completed and delivered without
-the former invalid-reply fallback. Michael explicitly waived the manual
-two-new-topic exercise for this checkpoint; the automated interleaved
-two-session coverage plus normal operation is the accepted validation gate.
+The fork's explicit policy is to minimize downstream diff and converge to
+unmodified `upstream/main` as soon as upstream provides official equivalents for
+these capabilities. Work continues directly on the local `main` branch.
+
+The focused Hermes test suite passed 87 tests, the standalone plugin suite
+(`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
+repositories. The gateway service was reinstalled into the active runtime venv
+and gracefully restarted (replacing PID 3017 with PID 788131). The new gateway
+process successfully initialized the hcom background service and spawned listener
+`kato` (PID 788826).
+
+Prior checkpoint (2026-08-25): merged `upstream/main` at `76e306c458` (merge
+commit `f520763a9d`). Commit `237fff02e2` added exact persisted-session dispatch.
+Commit `91df28a598` completed queued plugin delivery, and `f6880441fd` documented
+gateway completion ownership.
 
 ## Upstream strategy
 
