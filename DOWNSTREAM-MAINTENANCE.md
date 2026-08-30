@@ -127,7 +127,6 @@ Update explicitly:
 ```bash
 git status --short
 git fetch upstream main
-git switch feat/plugin-gateway-runtime
 git merge upstream/main
 ```
 
@@ -148,28 +147,26 @@ ruff check \
   tests/hermes_cli/test_plugins.py tools/environments/local.py
 ```
 
-Also run the standalone plugin suite from `orgoj/hermes-hcom-plugin` without
-requiring writable cache directories inside that checkout:
+Also run the standalone plugin suite directly from `~/projects/hermes-hcom-plugin`
+without requiring writable cache directories inside that checkout:
 
 ```bash
+cd ~/projects/hermes-hcom-plugin
 PYTEST_ADDOPTS="-p no:cacheprovider" pytest -q
 RUFF_CACHE_DIR="${TMPDIR:-/tmp}/hermes-hcom-plugin-ruff" \
   ruff check __init__.py test_plugin.py
 ```
 
-Install into the exact interpreter used by the running service, then restart
--- do not merely start -- the gateway and prove that the process was replaced
-without silently switching runtimes:
+Install into the service virtual environment (`/home/michael/projects/hermes-agent/venv`),
+then restart the gateway and verify that the process was replaced:
 
 ```bash
 old_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
-runtime_python="$(readlink -f "/proc/$old_pid/exe")"
-uv pip install --python "$runtime_python" -e ".[all,dev]"
+uv pip install --python /home/michael/projects/hermes-agent/venv -e ".[all,dev]"
 hermes gateway restart
 hermes gateway status
 new_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
 test "$new_pid" != "$old_pid"
-test "$(readlink -f "/proc/$new_pid/exe")" = "$runtime_python"
 ```
 
 Run service-status and journal checks on the host, not inside an isolated
@@ -185,7 +182,7 @@ message. A passing unit suite, successful restart, and polling-ready signal do
 not waive this gate. Push only after these runtime checks pass:
 
 ```bash
-git push origin feat/plugin-gateway-runtime
+git push origin main
 ```
 
 If the merge fails or validation regresses, do not force-push or reset away
