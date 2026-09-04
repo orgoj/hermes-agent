@@ -26,22 +26,27 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-08-30 `main` merged `upstream/main` at `5cc1369fa2` (merge commit
-`c1bb1bfcef`). An API-by-API audit confirmed that upstream's platform handler
-generalization and hook timeout scoping do not yet replace the route-aware
-prompt provider, completion-before-ack dispatch, gateway service lifecycle, or
-task-local subprocess environment required by the standalone hcom plugin.
+On 2026-09-04 `main` merged `upstream/main` at `63279301bc` (merge commit
+`5980ad3671`). An API-by-API audit confirmed that upstream does not yet replace
+the route-aware prompt provider, completion-before-ack dispatch, gateway service
+lifecycle, or task-local subprocess environment required by the standalone hcom plugin.
 
 The fork's explicit policy is to minimize downstream diff and converge to
 unmodified `upstream/main` as soon as upstream provides official equivalents for
 these capabilities. Work continues directly on the local `main` branch.
 
-The focused Hermes test suite passed 87 tests, the standalone plugin suite
+The focused Hermes test suite passed 88 tests, the standalone plugin suite
 (`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
 repositories. The gateway service was reinstalled into the active runtime venv
-and gracefully restarted (replacing PID 3017 with PID 788131). The new gateway
+and gracefully restarted (replacing PID 3033 with PID 107468). The new gateway
 process successfully initialized the hcom background service and spawned listener
-`kato` (PID 788826).
+`kato` (PID 108205), connected to Telegram in polling mode.
+
+Prior checkpoint (2026-08-30): merged `upstream/main` at `5cc1369fa2` (merge
+commit `c1bb1bfcef`). An API-by-API audit confirmed that upstream's platform handler
+generalization and hook timeout scoping did not yet replace the downstream extensions.
+Focused test suite passed 87 tests, plugin suite passed 14 tests, and gateway restarted
+cleanly (replacing PID 3017 with PID 788131).
 
 Prior checkpoint (2026-08-25): merged `upstream/main` at `76e306c458` (merge
 commit `f520763a9d`). Commit `237fff02e2` added exact persisted-session dispatch.
