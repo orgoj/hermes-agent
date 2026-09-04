@@ -73,6 +73,21 @@ Located in `agent/context_compressor.py`. This is the **primary compression
 system** that runs inside the agent's tool loop with access to accurate,
 API-reported token counts.
 
+#### Failure cooldown and provider-proven overflow
+
+A failed or stalled summary attempt arms a per-session **failure cooldown**
+(escalating 60s → 300s → 900s, persisted in `state.db`). While it is armed,
+ordinary threshold-triggered compaction is deferred so a broken summary backend
+does not re-fire every turn. Two paths run a real attempt anyway:
+
+- Manual `/compress` (`force=True`) — clears the cooldown and retries.
+- **Provider-proven overflow** — when the provider itself rejects the request
+  with a context-length error, the recovery pass ignores the cooldown for one
+  bounded attempt (`max_compression_attempts`) without clearing it. Deferring
+  here would wedge the session: every turn would bounce off the provider and
+  the next failure would extend the ladder (#100661). If that attempt fails,
+  the cooldown is recorded normally.
+
 
 ## Configuration
 
@@ -111,7 +126,7 @@ auxiliary:
 | `threshold` | `0.50` | 0.0-1.0 | Compression triggers when prompt tokens ≥ `threshold × context_length` |
 | `model_thresholds` | `{}` | map | Per-model overrides of `threshold`. Keys are substring-matched against the model name (longest match wins). The small-context floor still applies on top (see below) |
 | `target_ratio` | `0.20` | 0.10-0.80 | Controls tail protection token budget: `threshold_tokens × target_ratio` (legacy mode only — `lean` uses its own clamp) |
-| `tail_mode` | `lean` | `lean`, `legacy` | Tail retention policy. `legacy` keeps a `target_ratio`-sized verbatim tail (~100K+ tokens on big-window models). `lean` keeps a clamped tail of `2.5% × context window` (10K floor, 25K cap) and instead carries continuity in the summary: chunked identifier-preserving digests of the compacted region, a mechanically extracted anchor index (PR numbers, SHAs, paths, error strings — regex, never paraphrased), every real user message quoted verbatim (newest-first budget), and a `session_search` recovery pointer so the agent can re-access anything summarized away. Result on 500K-token real sessions: ~49K retained vs ~162K, with higher recall when paired with recovery (see `evals/compaction/results/`). Costs a few extra summarizer calls at the compaction boundary. Old tool results inside the lean tail are demoted to one-line stubs carrying a recovery pointer |
+| `tail_mode` | `lean` | `lean`, `legacy` | Tail retention policy. `legacy` keeps a `target_ratio`-sized verbatim tail (~100K+ tokens on big-window models). `lean` keeps a clamped tail of `2.5% × context window` (10K floor, 25K cap) and instead carries continuity in the summary: a detailed identifier-preserving session log (produced by the same single summary request — lean compaction makes exactly one auxiliary LLM call per attempt), a mechanically extracted anchor index (PR numbers, SHAs, paths, error strings — regex, never paraphrased), every real user message quoted verbatim (newest-first budget), and a `session_search` recovery pointer so the agent can re-access anything summarized away. Oversized regions are evenly sampled into the summarizer input (with explicit elision markers) rather than triggering extra calls. Result on 500K-token real sessions: ~49K retained vs ~162K, with higher recall when paired with recovery (see `evals/compaction/results/`). Old tool results inside the lean tail are demoted to one-line stubs carrying a recovery pointer |
 | `protect_last_n` | `20` | ≥1 | Minimum number of recent messages always preserved |
 | `min_tail_user_messages` | `1` | ≥1 | Minimum number of REAL (actionable) user messages guaranteed to survive in the uncompressed tail. `1` = the existing single last-user anchor (behavior-preserving default). Raise to e.g. `3` to keep the last 3 real user turns verbatim even when bulky tool outputs fill the tail token budget. Blank platform echoes, compaction handoffs, and synthetic continuation rows never count toward N. The guarantee wins over the tail token budget — the tail may exceed the budget when the anchor pulls the cut back |
 | `protect_first_n` | `3` | (hardcoded) | System prompt + first exchange always preserved |
