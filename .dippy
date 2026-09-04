@@ -1,1 +1,57 @@
+# Dippy config for hermes-agent
+
+# Venv activation
+allow source .venv/bin/activate
+allow source venv/bin/activate
+allow source ~/projects/hermes-agent/.venv/bin/activate
+allow source ~/projects/hermes-agent/venv/bin/activate
+allow . .venv/bin/activate
+allow . venv/bin/activate
+
+# Testing & linting
+allow pytest
+allow pytest *
+allow ruff check
+allow ruff check *
+
+# UV package management (editable installs of local packages only)
+allow uv pip install --python * -e .*
+allow uv pip install --python * -e *
+allow uv pip install -e .*
+allow uv pip install -e *
+allow uv pip list
+allow uv pip list *
+
+# Gateway service management (user systemd service for hermes-gateway)
+allow systemctl --user show hermes-gateway.service -p *
+allow systemctl --user show hermes-gateway.service
+allow systemctl --user cat hermes-gateway.service
+allow systemctl --user status hermes-gateway.service
+allow systemctl --user restart hermes-gateway.service
+allow systemctl --user is-active hermes-gateway.service
+allow systemctl --user is-enabled hermes-gateway.service
+
+# Hermes CLI gateway commands & safe checks
+allow hermes gateway restart
+allow hermes gateway status
+allow hermes gateway start
+allow hermes gateway stop
+allow hermes update --check
+
+# Git safe workflow
+allow git status
+allow git status *
+allow git fetch upstream *
 allow git merge upstream/main
+allow git merge --no-edit upstream/main
+allow git merge *
+allow git add *
+allow git commit *
+allow git checkout -- *
+allow git branch
+allow git branch *
+allow git log
+allow git log *
+allow git diff
+allow git diff *
+allow git var *
