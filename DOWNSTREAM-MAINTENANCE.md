@@ -132,7 +132,7 @@ Update explicitly:
 ```bash
 git status --short
 git fetch upstream main
-git merge upstream/main
+git merge --no-edit upstream/main
 ```
 
 Resolve conflicts without dropping either upstream behavior or the generic
