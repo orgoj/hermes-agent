@@ -26,21 +26,32 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-09-04 `main` merged `upstream/main` at `63279301bc` (merge commit
-`5980ad3671`). An API-by-API audit confirmed that upstream does not yet replace
-the route-aware prompt provider, completion-before-ack dispatch, gateway service
-lifecycle, or task-local subprocess environment required by the standalone hcom plugin.
+On 2026-09-11 `main` merged `upstream/main` at `dc90a75ab4` (merge commit
+`7e4c1994c7`). The downstream runtime was ported onto upstream's facade-and-sibling
+layout rather than restoring the old god-file implementations. An API-by-API audit
+confirmed that the watched background-service, gateway-injection, fork-update, and
+cross-surface lifecycle proposals remain open, so upstream still does not replace the
+route-aware prompt provider, completion-before-ack dispatch, gateway service lifecycle,
+or task-local subprocess environment required by the standalone hcom plugin.
 
 The fork's explicit policy is to minimize downstream diff and converge to
 unmodified `upstream/main` as soon as upstream provides official equivalents for
 these capabilities. Work continues directly on the local `main` branch.
 
-The focused Hermes test suite passed 88 tests, the standalone plugin suite
+The focused Hermes suite passed 99 tests, the standalone plugin suite
 (`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
 repositories. The gateway service was reinstalled into the active runtime venv
-and gracefully restarted (replacing PID 3033 with PID 107468). The new gateway
-process successfully initialized the hcom background service and spawned listener
-`kato` (PID 108205), connected to Telegram in polling mode.
+and gracefully restarted (replacing PID 2997 with PID 286608). The new gateway
+process initialized the hcom background service, spawned listener `kato` (PID
+287245), and confirmed Telegram polling health. Fresh session
+`20260911_092617_8c0bead9` received plain request event 71789: the persisted user
+content contained only the hcom envelope and original body, `skill_view` loaded
+`hcom-agent-messaging` first, and the reply used exactly one direct `hcom send`
+without `hcom start`, Base64, or helper encoding.
+
+Prior checkpoint (2026-09-04): merged `upstream/main` at `63279301bc` (merge
+commit `5980ad3671`). Focused test suite passed 88 tests, plugin suite passed 14,
+and the gateway restarted cleanly (replacing PID 3033 with PID 107468).
 
 Prior checkpoint (2026-08-30): merged `upstream/main` at `5cc1369fa2` (merge
 commit `c1bb1bfcef`). An API-by-API audit confirmed that upstream's platform handler
@@ -139,17 +150,24 @@ Resolve conflicts without dropping either upstream behavior or the generic
 plugin contracts. Then validate:
 
 ```bash
+scripts/run_tests.sh \
+  tests/gateway/test_plugin_runtime.py \
+  tests/gateway/test_queue_consumption.py \
+  tests/hermes_cli/test_cli_lifecycle_hooks.py \
+  tests/hermes_cli/test_plugins.py \
+  tests/hermes_cli/test_downstream_update_guard.py
 source .venv/bin/activate
-pytest -q \
-  tests/gateway/test_plugin_runtime.py \
-  tests/hermes_cli/test_cli_lifecycle_hooks.py \
-  tests/hermes_cli/test_plugins.py
 ruff check \
-  agent/delegation_context.py cli.py gateway/platforms/base.py \
-  gateway/plugin_context.py gateway/run.py hermes_cli/plugins.py \
+  agent/delegation_context.py cli.py gateway/platforms/base.py gateway/platforms/event.py \
+  gateway/plugin_context.py gateway/run.py gateway/run_busy.py gateway/run_plugin_runtime.py \
+  gateway/run_shutdown.py gateway/run_startup.py gateway/run_turn.py gateway/run_turn_runner.py \
+  hermes_cli/plugins.py hermes_cli/plugins_ledger.py hermes_cli/plugins_loader.py \
+  hermes_cli/update_cmd.py \
   tests/gateway/test_plugin_runtime.py \
+  tests/gateway/test_queue_consumption.py \
   tests/hermes_cli/test_cli_lifecycle_hooks.py \
-  tests/hermes_cli/test_plugins.py tools/environments/local.py
+  tests/hermes_cli/test_plugins.py tests/hermes_cli/test_downstream_update_guard.py \
+  tools/environments/local.py
 ```
 
 Also run the standalone plugin suite directly from `~/projects/hermes-hcom-plugin`
@@ -157,7 +175,8 @@ without requiring writable cache directories inside that checkout:
 
 ```bash
 cd ~/projects/hermes-hcom-plugin
-PYTEST_ADDOPTS="-p no:cacheprovider" pytest -q
+PYTEST_ADDOPTS="-p no:cacheprovider" \
+  /home/michael/projects/hermes-agent/.venv/bin/python -m pytest -q
 RUFF_CACHE_DIR="${TMPDIR:-/tmp}/hermes-hcom-plugin-ruff" \
   ruff check __init__.py test_plugin.py
 ```
