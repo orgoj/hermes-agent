@@ -26,13 +26,14 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-09-11 `main` merged `upstream/main` at `dc90a75ab4` (merge commit
-`7e4c1994c7`). The downstream runtime was ported onto upstream's facade-and-sibling
-layout rather than restoring the old god-file implementations. An API-by-API audit
-confirmed that the watched background-service, gateway-injection, fork-update, and
-cross-surface lifecycle proposals remain open, so upstream still does not replace the
-route-aware prompt provider, completion-before-ack dispatch, gateway service lifecycle,
-or task-local subprocess environment required by the standalone hcom plugin.
+On 2026-09-11 `main` merged `upstream/main` through `b7d353fef1` (runtime-port
+merge `7e4c1994c7`, final catch-up merge `aecf95703c`). The downstream runtime was
+ported onto upstream's facade-and-sibling layout rather than restoring the old god-file
+implementations. An API-by-API audit confirmed that the watched background-service,
+gateway-injection, fork-update, and cross-surface lifecycle proposals remain open, so
+upstream still does not replace the route-aware prompt provider, completion-before-ack
+dispatch, gateway service lifecycle, or task-local subprocess environment required by
+the standalone hcom plugin.
 
 The fork's explicit policy is to minimize downstream diff and converge to
 unmodified `upstream/main` as soon as upstream provides official equivalents for
