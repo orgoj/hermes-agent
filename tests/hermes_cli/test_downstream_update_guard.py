@@ -18,13 +18,13 @@ def test_downstream_marker_blocks_update_before_backup(tmp_path, monkeypatch, ca
     monkeypatch.setattr(cli_main, "_run_pre_update_backup", backup)
 
     with pytest.raises(SystemExit) as exc:
-        cli_main._cmd_update_impl(SimpleNamespace(), gateway_mode=False)
+        update_cmd._cmd_update_impl(SimpleNamespace(), gateway_mode=False)
 
     assert exc.value.code == 2
     assert backup_called is False
     output = capsys.readouterr().out
     assert "Automatic Hermes update is disabled" in output
-    assert "git merge upstream/main" in output
+    assert "git merge --no-edit upstream/main" in output
     assert "DOWNSTREAM-MAINTENANCE.md" in output
 
 
