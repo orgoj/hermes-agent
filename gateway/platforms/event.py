@@ -92,6 +92,8 @@ class MessageEvent:
         default_factory=list, repr=False, compare=False
     )
     _plugin_subprocess_env: Dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    # Run-owned final presentation snapshot; never deserialized from ingress metadata.
+    _notification_reply_muted: Optional[bool] = field(default=None, init=False, repr=False, compare=False)
 
     def is_command(self) -> bool:
         """Check if this is a command message (e.g., /new, /reset)."""
