@@ -26,20 +26,31 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-09-11 `main` merged `upstream/main` through `b7d353fef1` (runtime-port
-merge `7e4c1994c7`, final catch-up merge `aecf95703c`). The downstream runtime was
-ported onto upstream's facade-and-sibling layout rather than restoring the old god-file
-implementations. An API-by-API audit confirmed that the watched background-service,
-gateway-injection, fork-update, and cross-surface lifecycle proposals remain open, so
-upstream still does not replace the route-aware prompt provider, completion-before-ack
-dispatch, gateway service lifecycle, or task-local subprocess environment required by
-the standalone hcom plugin.
+On 2026-09-20 `main` merged `upstream/main` through `9573f44ca5` (merge
+`0a183e3d4c`). The watched background-service, gateway-injection, and fork-update
+proposals remain open. Upstream's new intake/delivery adapter split removed the old
+`_adapter_for_source` seam; follow-up `c1df79e5ce` moved trusted plugin ingress to
+`_delivery_adapter_for` and updated the tests to exercise the production seam.
+
+The focused Hermes suite passed 107 tests, the standalone plugin suite
+(`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
+repositories. The gateway service was reinstalled into the active runtime venv and
+gracefully restarted (replacing PID 330950 with PID 343196). Telegram reached polling
+ready. Fresh session `20260920_102653_6ac7677e` received plain hcom request event
+87871: the persisted user content contained only the hcom envelope and original body,
+`skill_view` loaded `hcom-agent-messaging` first, Telegram mirrored the inbound message
+as platform message 7933, and the reply used exactly one direct `hcom send` without
+`hcom start`, `printf`, Base64, or helper encoding. Manual ack completed and listener
+`kato` returned to `listening`.
 
 The fork's explicit policy is to minimize downstream diff and converge to
 unmodified `upstream/main` as soon as upstream provides official equivalents for
 these capabilities. Work continues directly on the local `main` branch.
 
-The focused Hermes suite passed 99 tests, the standalone plugin suite
+Prior checkpoint (2026-09-11): merged `upstream/main` through `b7d353fef1`
+(runtime-port merge `7e4c1994c7`, final catch-up merge `aecf95703c`) and ported
+the downstream runtime onto upstream's facade-and-sibling layout. The focused
+Hermes suite passed 99 tests, the standalone plugin suite
 (`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
 repositories. The gateway service was reinstalled into the active runtime venv
 and gracefully restarted (replacing PID 2997 with PID 286608). The new gateway
