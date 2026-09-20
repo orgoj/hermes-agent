@@ -34,14 +34,15 @@ proposals remain open. Upstream's new intake/delivery adapter split removed the 
 
 The focused Hermes suite passed 107 tests, the standalone plugin suite
 (`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
-repositories. The gateway service was reinstalled into the active runtime venv and
-gracefully restarted (replacing PID 330950 with PID 343196). Telegram reached polling
-ready. Fresh session `20260920_102653_6ac7677e` received plain hcom request event
-87871: the persisted user content contained only the hcom envelope and original body,
-`skill_view` loaded `hcom-agent-messaging` first, Telegram mirrored the inbound message
-as platform message 7933, and the reply used exactly one direct `hcom send` without
-`hcom start`, `printf`, Base64, or helper encoding. Manual ack completed and listener
-`kato` returned to `listening`.
+repositories. The E2E deployment replaced gateway PID 330950 with PID 343196.
+Telegram reached polling ready. Fresh session `20260920_102653_6ac7677e` received
+plain hcom request event 87871: the persisted user content contained only the hcom
+envelope and original body, `skill_view` loaded `hcom-agent-messaging` first,
+Telegram mirrored the inbound message as platform message 7933, and the reply used
+exactly one direct `hcom send` without `hcom start`, `printf`, Base64, or helper
+encoding. Manual ack completed and listener `kato` returned to `listening`. After
+recording the checkpoint, the gateway was restarted at sync-final HEAD `1a6cd4b8e4`
+as PID 347707 with listener `kato` PID 347994.
 
 The fork's explicit policy is to minimize downstream diff and converge to
 unmodified `upstream/main` as soon as upstream provides official equivalents for
@@ -156,10 +157,13 @@ Update explicitly:
 git status --short
 git fetch upstream main
 git merge --no-edit upstream/main
+uv pip install --python /home/michael/projects/hermes-agent/.venv -e ".[all,dev]"
 ```
 
 Resolve conflicts without dropping either upstream behavior or the generic
-plugin contracts. Then validate:
+plugin contracts. Refreshing the development editable install is required before
+validation because newly added root modules are otherwise absent when tests run
+from another repository. Then validate:
 
 ```bash
 scripts/run_tests.sh \
@@ -220,6 +224,11 @@ not waive this gate. Push only after these runtime checks pass:
 ```bash
 git push origin main
 ```
+
+Before the final report, record `git status --short --branch` for both repositories.
+Treat the standalone plugin repository as validation-only unless the current request
+explicitly authorizes changes or a push. Report its branch and publish state separately
+from Hermes.
 
 If the merge fails or validation regresses, do not force-push or reset away
 the last known-good branch. Abort the merge, investigate in a temporary branch,

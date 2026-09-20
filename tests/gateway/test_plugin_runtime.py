@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from gateway.config import Platform
 from gateway.platforms.base import (
     MessageEvent,
     MessageType,
@@ -25,8 +26,10 @@ async def test_internal_dispatch_uses_platform_completion_and_task_local_env():
             observed["event_env"] = event._plugin_subprocess_env
             _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
 
+    adapter = Adapter()
     runner = object.__new__(GatewayRunner)
-    runner._delivery_adapter_for = lambda _source: Adapter()
+    runner.adapters = {Platform.TELEGRAM: adapter}
+    runner.config = SimpleNamespace(multiplex_profiles=False)
     source = SessionSource.from_dict(
         {"platform": "telegram", "chat_id": "123", "chat_type": "dm"}
     )
