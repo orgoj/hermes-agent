@@ -41,7 +41,7 @@ class GatewayPluginRuntimeMixin:
         elif source is None:
             raise ValueError("dispatch_internal_message requires source or session_key")
 
-        adapter = self._adapter_for_source(source)
+        adapter = self._delivery_adapter_for(source)
         if adapter is None:
             raise RuntimeError(f"no live {source.platform.value} adapter for internal message")
 

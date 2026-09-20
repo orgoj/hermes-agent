@@ -26,7 +26,7 @@ async def test_internal_dispatch_uses_platform_completion_and_task_local_env():
             _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
 
     runner = object.__new__(GatewayRunner)
-    runner._adapter_for_source = lambda _source: Adapter()
+    runner._delivery_adapter_for = lambda _source: Adapter()
     source = SessionSource.from_dict(
         {"platform": "telegram", "chat_id": "123", "chat_type": "dm"}
     )
@@ -60,7 +60,7 @@ async def test_internal_dispatch_displays_external_input_before_processing():
             _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
 
     runner = object.__new__(GatewayRunner)
-    runner._adapter_for_source = lambda _source: Adapter()
+    runner._delivery_adapter_for = lambda _source: Adapter()
     runner._thread_metadata_for_source = lambda _source: {"thread_id": "topic-1"}
     source = SessionSource.from_dict(
         {"platform": "telegram", "chat_id": "123", "chat_type": "dm"}
@@ -116,7 +116,7 @@ async def test_internal_dispatch_resolves_exact_session_route_and_pins_it():
 
     runner = object.__new__(GatewayRunner)
     runner.session_store = Store()
-    runner._adapter_for_source = lambda _source: Adapter()
+    runner._delivery_adapter_for = lambda _source: Adapter()
     runner._thread_metadata_for_source = lambda resolved: {
         "thread_id": resolved.thread_id
     }
