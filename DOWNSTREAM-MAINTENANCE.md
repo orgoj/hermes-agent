@@ -26,12 +26,29 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-09-20 `main` merged `upstream/main` through `9573f44ca5` (merge
+On 2026-10-07 `main` merged `upstream/main` through `05eecbcd97` (merge
+`f6f000bd6a`). Upstream refactored `cli.py` run loops into `CLITuiRuntimeMixin`
+(`hermes_cli/cli_tui_runtime_mixin.py`) and updated platform adapters with
+requeue back-off. Downstream hooks (`on_cli_turn_start`, `on_cli_turn_end`,
+`on_cli_shutdown`) were ported to the new mixin, and `_process_message_with_event_context`
+was integrated into `_drain_after`.
+
+The focused Hermes suite passed 112 tests, the standalone plugin suite
+(`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
+repositories. The gateway was restarted as PID 259407 with child listener `kato`
+PID 261031. Telegram reached polling ready. In the fresh Telegram session after
+`/new`, an hcom test request sent from `hermes_dev` to `@kato` was received,
+`hcom-agent-messaging` loaded, and Kato replied successfully with status online.
+
+The fork's explicit policy is to minimize downstream diff and converge to
+unmodified `upstream/main` as soon as upstream provides official equivalents for
+these capabilities. Work continues directly on the local `main` branch.
+
+Prior checkpoint (2026-09-20): merged `upstream/main` through `9573f44ca5` (merge
 `0a183e3d4c`). The watched background-service, gateway-injection, and fork-update
 proposals remain open. Upstream's new intake/delivery adapter split removed the old
 `_adapter_for_source` seam; follow-up `c1df79e5ce` moved trusted plugin ingress to
 `_delivery_adapter_for` and updated the tests to exercise the production seam.
-
 The focused Hermes suite passed 107 tests, the standalone plugin suite
 (`orgoj/hermes-hcom-plugin`) passed 14 tests, and Ruff passed cleanly for both
 repositories. The E2E deployment replaced gateway PID 330950 with PID 343196.
@@ -43,10 +60,6 @@ exactly one direct `hcom send` without `hcom start`, `printf`, Base64, or helper
 encoding. Manual ack completed and listener `kato` returned to `listening`. After
 recording the checkpoint, the gateway was restarted at sync-final HEAD `1a6cd4b8e4`
 as PID 347707 with listener `kato` PID 347994.
-
-The fork's explicit policy is to minimize downstream diff and converge to
-unmodified `upstream/main` as soon as upstream provides official equivalents for
-these capabilities. Work continues directly on the local `main` branch.
 
 Prior checkpoint (2026-09-11): merged `upstream/main` through `b7d353fef1`
 (runtime-port merge `7e4c1994c7`, final catch-up merge `aecf95703c`) and ported
@@ -114,17 +127,14 @@ contains no identity or runtime instructions.
 
 A deployment is valid only when all checks pass:
 
-1. Send `/new` in the mapped messaging channel.
-2. Record the new Hermes session ID and verify it differs from the prior test.
-3. Send a plain hcom request whose body contains no identity, hcom command,
-   lifecycle instruction, or test-specific prohibition.
-4. Verify the inbound persisted user content contains only the hcom envelope
-   metadata and the original message body.
-5. Verify the first relevant agent action loads `hcom-agent-messaging`.
-6. Verify the reply uses exactly one direct
-   `hcom send ... --name <configured identity> -- '<text>'` command.
-7. Verify there is no `hcom start`, `printf`, Base64, or helper encoding call.
-8. Verify the visible inbound message appears in the active channel.
+1. User sends `/new` in the Telegram channel.
+2. Immediately send a plain hcom test request from `hermes_dev` to `@kato`:
+   ```bash
+   hcom send @kato --name hermes_dev --intent request -- 'Ahoj, toto je testovaci zprava po aktualizaci. Jaky je tvuj stav?'
+   ```
+   Do NOT manually inspect internal session DBs or `state.db` before sending.
+3. End turn and wait for the response from `@kato` via `<hcom>` tags.
+4. Verify `@kato` replies with online status, loaded `hcom-agent-messaging`, and returned to `listening`.
 
 ### Before widening the plugin API
 
@@ -157,7 +167,7 @@ Update explicitly:
 git status --short
 git fetch upstream main
 git merge --no-edit upstream/main
-uv pip install --python /home/michael/projects/hermes-agent/.venv -e ".[all,dev]"
+uv pip install --python /home/michael/projects/hermes-agent/.venv -e ".[all]"
 ```
 
 Resolve conflicts without dropping either upstream behavior or the generic
@@ -202,7 +212,7 @@ then restart the gateway and verify that the process was replaced:
 
 ```bash
 old_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
-uv pip install --python /home/michael/projects/hermes-agent/venv -e ".[all,dev]"
+uv pip install --python /home/michael/projects/hermes-agent/venv -e ".[all]"
 hermes gateway restart
 hermes gateway status
 new_pid="$(systemctl --user show hermes-gateway.service -p MainPID --value)"
