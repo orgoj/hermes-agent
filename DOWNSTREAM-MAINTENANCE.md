@@ -36,8 +36,10 @@ focused Hermes suite passed 112 tests, the plugin suite passed 14, and Ruff
 passed for both repositories. The gateway replaced PID 2908 with PID 275921,
 Telegram reached polling mode, and after `/new` hcom request #153581 to `kato`
 was answered (#153589) and the gateway-owned listener returned to `listening`.
-`python scripts/check --base upstream/main` still reports pre-existing
-downstream health findings (BLE001, FILE_LINES) and the `AGENTS.md` size cap.
+Follow-up `261b5f1a44` moved the downstream code out of upstream facades into
+siblings, so `python scripts/check --only health,agents-md,ruff --base
+upstream/main` passes; it passed the same Telegram E2E (#154041 → #154046) on
+gateway PID 583107.
 
 Prior checkpoint (2026-10-07): merged `upstream/main` through `05eecbcd97` (merge
 `f6f000bd6a`). Upstream refactored `cli.py` run loops into `CLITuiRuntimeMixin`
