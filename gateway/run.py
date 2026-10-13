@@ -2183,7 +2183,6 @@ from gateway.run_notifications import GatewayNotificationsMixin
 from gateway.run_inbound import GatewayInboundMixin
 from gateway.run_goals import GatewayGoalsMixin
 from gateway.run_agent_cache import GatewayAgentCacheMixin
-from gateway.run_plugin_runtime import GatewayPluginRuntimeMixin
 from gateway.run_profile_reconcile import GatewayProfileReconcileMixin
 from gateway.run_plugin_rewire import GatewayPluginRewireMixin
 from gateway.platforms.base import (
@@ -3356,8 +3355,7 @@ class GatewayRunner(
     GatewayVoiceMixin, GatewayAdapterLifecycleMixin, GatewayTopicThreadsMixin, GatewayTurnMixin,
     GatewayShutdownMixin, GatewayBusySessionMixin, GatewayConfigLoadersMixin, GatewayStartupMixin,
     GatewaySessionWatchersMixin, GatewayNotificationsMixin, GatewayInboundMixin, GatewayGoalsMixin,
-    GatewayAgentCacheMixin, GatewayPluginRuntimeMixin, GatewayProfileReconcileMixin,
-    GatewayPluginRewireMixin):
+    GatewayAgentCacheMixin, GatewayProfileReconcileMixin, GatewayPluginRewireMixin):
     """Main gateway controller: manages adapter lifecycles, routes messages to/from the agent."""
 
     # Class-level defaults so partial construction in tests doesn't blow up on attribute access.
@@ -3696,7 +3694,6 @@ class GatewayRunner(
         self._recent_voice_transcripts: dict[tuple, list[tuple[float, str]]] = {}
         # Background tasks kept referenced so they are not garbage-collected mid-execution.
         self._background_tasks: set = set()
-        self._plugin_gateway_services: dict[str, Any] = {}
         # Event-loop liveness heartbeat: rewritten every 30s while the loop dispatches; supervisors use
         # the file mtime / updated_at to tell "process alive" from "loop frozen".
         # See #66892.

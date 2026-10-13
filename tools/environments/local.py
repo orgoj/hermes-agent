@@ -240,13 +240,9 @@ def _inject_session_context_env(env: dict) -> None:
 
     # Runtime plugins may bind routing values to one gateway turn. Keep them
     # task-local so concurrent sessions cannot leak into sibling subprocesses.
-    try:
-        from gateway.plugin_context import subprocess_env_values
+    from gateway.plugin_context import subprocess_env_values
 
-        plugin_values = subprocess_env_values()
-    except Exception:
-        plugin_values = {}
-    for name, value in plugin_values.items():
+    for name, value in subprocess_env_values().items():
         if value:
             env[name] = value
         else:

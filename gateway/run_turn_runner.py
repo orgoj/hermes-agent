@@ -1,3 +1,4 @@
+# health: allow FILE_LINES -- downstream fork: call sites of the plugin gateway runtime (DOWNSTREAM-MAINTENANCE.md); the behaviour lives in siblings
 """Per-turn callback runner (progress/status/voice/run_sync) for the gateway agent turn.
 
 ``TurnRunner`` owns the per-turn callbacks ``GatewayRunner._run_agent_inner`` binds. ``gateway.run``
@@ -1850,20 +1851,8 @@ class TurnRunner:
         ):
             if extra:
                 combined = (combined + "\n\n" + extra).strip()
-        from hermes_cli.plugins import get_gateway_prompt_providers
-        for provider_name, provider in get_gateway_prompt_providers().items():
-            try:
-                contribution = provider(
-                    source=ctx.source,
-                    session_key=ctx.session_key,
-                    gateway=self._runner,
-                )
-            except Exception:
-                logger.warning("gateway prompt provider %s failed", provider_name, exc_info=True)
-                continue
-            if contribution:
-                combined = (combined + "\n\n" + str(contribution).strip()).strip()
-        return combined
+        from gateway.run_plugin_runtime import append_gateway_plugin_prompts
+        return append_gateway_plugin_prompts(combined, ctx.source, ctx.session_key, self._runner)
 
     def _append_auto_media_tags(self, final_response: str, result, agent_history, history_media_paths) -> str:
         """Append MEDIA:<path> tags from tool results (e.g. TTS) that the model's final text omits, so

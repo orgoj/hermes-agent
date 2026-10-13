@@ -8,9 +8,9 @@ from gateway.platforms.base import (
     MessageEvent,
     MessageType,
     ProcessingOutcome,
-    _resolve_processing_completion,
     merge_pending_message_event,
 )
+from gateway.platforms.event import resolve_processing_completion
 from gateway.plugin_context import scoped_subprocess_env, subprocess_env_values
 
 
@@ -24,7 +24,7 @@ async def test_internal_dispatch_uses_platform_completion_and_task_local_env():
     class Adapter:
         async def handle_message(self, event):
             observed["event_env"] = event._plugin_subprocess_env
-            _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
+            resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
 
     adapter = Adapter()
     runner = object.__new__(GatewayRunner)
@@ -60,7 +60,7 @@ async def test_internal_dispatch_displays_external_input_before_processing():
 
         async def handle_message(self, event):
             calls.append(("handle", event.text, event.message_id))
-            _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
+            resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
 
     runner = object.__new__(GatewayRunner)
     runner._delivery_adapter_for = lambda _source: Adapter()
@@ -115,7 +115,7 @@ async def test_internal_dispatch_resolves_exact_session_route_and_pins_it():
 
         async def handle_message(self, event):
             observed["event"] = event
-            _resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
+            resolve_processing_completion(event, ProcessingOutcome.SUCCESS)
 
     runner = object.__new__(GatewayRunner)
     runner.session_store = Store()
@@ -182,7 +182,7 @@ async def test_merged_events_share_completion_and_displaced_event_is_cancelled()
     pending = {"session": first}
 
     merge_pending_message_event(pending, "session", second, merge_text=True)
-    _resolve_processing_completion(pending["session"], ProcessingOutcome.SUCCESS)
+    resolve_processing_completion(pending["session"], ProcessingOutcome.SUCCESS)
     assert await first_future is ProcessingOutcome.SUCCESS
     assert await second_future is ProcessingOutcome.SUCCESS
 
@@ -229,17 +229,17 @@ async def test_gateway_service_lifecycle_is_owned_and_bounded():
             calls.append("shutdown")
 
     runner = object.__new__(GatewayRunner)
-    runner._plugin_gateway_services = {}
 
-    from hermes_cli import plugins
+    from gateway import run_plugin_runtime
+    from hermes_cli import plugins_gateway_runtime
 
-    original = plugins.get_gateway_service_factories
-    plugins.get_gateway_service_factories = lambda: {"test": lambda _runner: Service()}
+    original = plugins_gateway_runtime.get_gateway_service_factories
+    plugins_gateway_runtime.get_gateway_service_factories = lambda: {"test": lambda _runner: Service()}
     try:
-        await runner._start_plugin_gateway_services()
-        await runner._shutdown_plugin_gateway_services()
+        await run_plugin_runtime.start_plugin_gateway_services(runner)
+        await run_plugin_runtime.shutdown_plugin_gateway_services(runner)
     finally:
-        plugins.get_gateway_service_factories = original
+        plugins_gateway_runtime.get_gateway_service_factories = original
 
     assert calls == ["start", "shutdown"]
     assert runner._plugin_gateway_services == {}

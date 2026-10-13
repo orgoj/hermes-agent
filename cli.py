@@ -35,8 +35,8 @@ def _notify_cli_lifecycle(hook_name: str, **kwargs: Any) -> None:
         from hermes_cli.lifecycle import invoke_hook
 
         invoke_hook(hook_name, cli_surface="interactive", **kwargs)
-    except Exception as exc:
-        logger.warning("CLI lifecycle hook %s failed: %s", hook_name, exc)
+    except Exception:  # plugin code: a failing hook must not break the interactive CLI
+        logger.warning("CLI lifecycle hook %s failed", hook_name, exc_info=True)
 
 
 os.environ["HERMES_QUIET"] = "1"  # suppress our modules' startup chatter

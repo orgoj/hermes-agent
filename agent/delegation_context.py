@@ -8,7 +8,7 @@ closed for them without mutating the process-global environment.
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import Iterator, Mapping, MutableMapping, overload
 
@@ -34,12 +34,9 @@ def delegated_child_context(session_id: str | None = None) -> Iterator[None]:
     try:
         from gateway.session_context import scoped_current_session_id  # lazy: it calls is_delegated_child_context()
 
-        try:
-            from gateway.plugin_context import cleared_subprocess_env
-            plugin_scope = cleared_subprocess_env()
-        except Exception:
-            plugin_scope = nullcontext()
-        with scoped_current_session_id(session_id), plugin_scope:
+        from gateway.plugin_context import cleared_subprocess_env
+
+        with scoped_current_session_id(session_id), cleared_subprocess_env():
             yield
     finally:
         _DELEGATED_CHILD_CONTEXT.reset(token)

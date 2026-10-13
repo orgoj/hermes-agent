@@ -1,10 +1,6 @@
 # Hermes Agent - Development Guide
 
-> **Downstream branch note:** Read
-> [`DOWNSTREAM-MAINTENANCE.md`](DOWNSTREAM-MAINTENANCE.md) before changing the
-> plugin runtime, preparing an upstream PR, or running `hermes update`. It
-> records the external consumer, overlapping upstream work, migration plan,
-> and required fork-update procedure.
+> **Fork:** read `DOWNSTREAM-MAINTENANCE.md` before plugin-runtime changes, upstream PRs or updates.
 
 For AI coding assistants and developers working on hermes-agent. This root file is a hub: what
 applies everywhere, then a routing table. Each area's `AGENTS.md` loads automatically when you work

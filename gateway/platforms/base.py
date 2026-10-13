@@ -1,3 +1,4 @@
+# health: allow FILE_LINES -- downstream fork: call sites of the plugin gateway runtime (DOWNSTREAM-MAINTENANCE.md); the behaviour lives in siblings
 """Base platform adapter interface; every platform adapter inherits from BasePlatformAdapter."""
 
 import asyncio
@@ -425,16 +426,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.helpers import fence_state_after
-from gateway.platforms.event import (
-    MessageEvent,
-    MessageType,
-    ProcessingOutcome,
-    merge_processing_completion_waiters as _merge_processing_completion_waiters,
-    resolve_processing_completion as _resolve_processing_completion,
-)
 from gateway.platforms.base_exec_approval import (
     approval_timeout_seconds, ea_action_labels, ea_default_reason_text, ea_header_text,
     ea_reason_label_text, ea_smart_deny_line_text, format_approval_deadline_line)
+from gateway.platforms.event import MessageEvent, MessageType, ProcessingOutcome
+from gateway.platforms.event import merge_processing_completion_waiters, resolve_processing_completion
 from gateway.warning_notifications import diagnostic_wake_muted
 from hermes_cli.observability.shared_metrics_gateway import records_delivery, stop_reply_clock
 from gateway.session import SessionSource, build_session_key
@@ -1829,7 +1825,7 @@ def merge_pending_message_event(pending_messages: dict[str, MessageEvent], sessi
         # A photo burst always absorbs; otherwise merge only when media is involved on either
         # side. Captions merge in every absorbing case.
         if both_photo or existing.media_urls or incoming_has_media:
-            _merge_processing_completion_waiters(existing, event)
+            merge_processing_completion_waiters(existing, event)
             if both_photo or incoming_has_media:
                 existing.media_urls.extend(event.media_urls)
                 existing.media_types.extend(event.media_types)
@@ -1849,12 +1845,12 @@ def merge_pending_message_event(pending_messages: dict[str, MessageEvent], sessi
             return
         both_text = existing_type == MessageType.TEXT and event.message_type == MessageType.TEXT
         if merge_text and both_text:
-            _merge_processing_completion_waiters(existing, event)
+            merge_processing_completion_waiters(existing, event)
             if event.text:
                 existing.text = _append_text(existing.text, event.text)
             existing.absorb_reply_expected(event)
             return
-        _resolve_processing_completion(existing, ProcessingOutcome.CANCELLED)
+        resolve_processing_completion(existing, ProcessingOutcome.CANCELLED)
     pending_messages[session_key] = event
 
 
@@ -4061,7 +4057,7 @@ class BasePlatformAdapter(ABC):
         task so new messages (and interrupts) can arrive while an agent runs."""
         event._gateway_accepted = False
         if not self._message_handler:
-            _resolve_processing_completion(event, ProcessingOutcome.FAILURE)
+            resolve_processing_completion(event, ProcessingOutcome.FAILURE)
             # No handler = every inbound silently discarded on an adapter that still polls and sends;
             # say so once per adapter (#102260).
             if not getattr(self, "_no_message_handler_logged", False):
@@ -4089,7 +4085,7 @@ class BasePlatformAdapter(ABC):
         if expected_session_key and session_key != expected_session_key:
             logger.warning("Dropping internally routed event: expected session=%s derived=%s",
                            expected_session_key, session_key)
-            _resolve_processing_completion(event, ProcessingOutcome.FAILURE)
+            resolve_processing_completion(event, ProcessingOutcome.FAILURE)
             return
         # On-entry self-heal: clear a guard whose owner task already exited.
         if session_key in self._active_sessions:
@@ -4191,7 +4187,7 @@ class BasePlatformAdapter(ABC):
         # Without a runner FIFO, do not merge a wake into an occupied human slot
         # (or collapse distinct wakes into one turn). Its caller can retry admission.
         if event.internal and session_key in self._pending_messages:
-            _resolve_processing_completion(event, ProcessingOutcome.FAILURE)
+            resolve_processing_completion(event, ProcessingOutcome.FAILURE)
             return
         # Photo bursts/albums: queue without interrupting; they run after the current task.
         if event.message_type == MessageType.PHOTO:
@@ -4668,7 +4664,7 @@ class BasePlatformAdapter(ABC):
             await self._run_processing_hook(
                 "on_processing_complete", event,
                 ProcessingOutcome.SUCCESS if processing_ok else ProcessingOutcome.FAILURE)
-            _resolve_processing_completion(
+            resolve_processing_completion(
                 event, ProcessingOutcome.SUCCESS if processing_ok else ProcessingOutcome.FAILURE)
             # Force-flush an unfired debounce timer so this task hands off to a fresh drain task.
             # Clear the Event BEFORE the stop-typing await so concurrent inbound sees a live guard.
@@ -4688,12 +4684,12 @@ class BasePlatformAdapter(ABC):
             await self._run_processing_hook(
                 "on_processing_complete", event,
                 ProcessingOutcome.CANCELLED if expected else ProcessingOutcome.FAILURE)
-            _resolve_processing_completion(
+            resolve_processing_completion(
                 event, ProcessingOutcome.CANCELLED if expected else ProcessingOutcome.FAILURE)
             raise
         except BaseException as e:
             await self._run_processing_hook("on_processing_complete", event, ProcessingOutcome.FAILURE)
-            _resolve_processing_completion(event, ProcessingOutcome.FAILURE)
+            resolve_processing_completion(event, ProcessingOutcome.FAILURE)
             logger.error("[%s] Error handling message: %s", self.name, e, exc_info=True)
             _thread_metadata = (await self._notify_turn_error(event, e)) or _thread_metadata
             # SystemExit/KeyboardInterrupt propagate; other BaseExceptions are contained.

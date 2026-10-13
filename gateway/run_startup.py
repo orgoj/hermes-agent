@@ -23,6 +23,7 @@ from gateway.delivery import looks_like_telegram_private_chat_id
 from gateway.platforms.base import BasePlatformAdapter
 from gateway.platforms.event import MessageEvent, MessageType
 from gateway.session import SessionSource, build_session_key
+from gateway.run_plugin_runtime import GatewayPluginRuntimeMixin, start_plugin_gateway_services
 from gateway.restart import (
     DEFAULT_GATEWAY_CRON_DRAIN_TIMEOUT, GATEWAY_FATAL_CONFIG_EXIT_CODE, is_global_startup_conflict
 )
@@ -60,7 +61,7 @@ def recover_left_core_at_gateway_start() -> None:
         recover_left_core_in(root)
 
 
-class GatewayStartupMixin:
+class GatewayStartupMixin(GatewayPluginRuntimeMixin):
     """Startup sequence, resume/restore and handoff methods for GatewayRunner."""
 
     @staticmethod
@@ -1538,7 +1539,7 @@ class GatewayStartupMixin:
         # Surface state.db init failures to messaging platforms before the user loses data.
         # See #88235.
         await self._send_session_db_warning_notifications()
-        await self._start_plugin_gateway_services()
+        await start_plugin_gateway_services(self)
         from gateway.cron_store_notices import install_cron_store_notices
         install_cron_store_notices(self, asyncio.get_running_loop())
         # Resume recovered process watchers. Detach the batch atomically (fresh list, not clear(): a

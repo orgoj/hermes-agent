@@ -1,3 +1,4 @@
+# health: allow FILE_LINES -- downstream fork: call sites of the plugin gateway runtime (DOWNSTREAM-MAINTENANCE.md); the behaviour lives in siblings
 """Hermes Plugin System — discovers, loads, and manages plugins.
 
 Sources, later overriding earlier on key collision: bundled ``<repo>/plugins/<name>/`` (``memory/``
@@ -60,6 +61,7 @@ from hermes_cli.plugins_dispatch import (
     is_valid_system_prompt_section_id,
 )
 from hermes_cli.plugins_ledger import PluginLedgerMixin, PluginRegistration
+from hermes_cli.plugins_gateway_runtime import PluginContextGatewayRuntimeMixin, PluginManagerGatewayRuntimeMixin
 from hermes_cli.plugins_state import (
     PluginState, _locked_plugin_state, _nested_plugin_mapping, _nested_plugin_value,
     _plugin_relative_segments, _plugin_settings_entry, save_plugin_setting,
@@ -231,7 +233,7 @@ class LoadedPlugin:
     deferred: bool = False
 
 
-class PluginContext:
+class PluginContext(PluginContextGatewayRuntimeMixin):
     """Facade given to plugins so they can register tools and hooks."""
 
     def __init__(self, manifest: PluginManifest, manager: PluginManager):
@@ -345,42 +347,6 @@ class PluginContext:
         handle = self._track_mapping_entry(kind, key, mapping, entry, previous)
         logger.debug(log_fmt, self.manifest.name, *log_args)
         return handle
-
-    def register_gateway_service(self, name: str, factory: Callable) -> PluginRegistration:
-        """Register a gateway-owned service factory with async start/shutdown lifecycle."""
-        clean = str(name or "").strip()
-        if not clean:
-            raise ValueError("gateway service name is required")
-        if not callable(factory):
-            raise ValueError(f"gateway service {clean!r} factory must be callable")
-        if clean in self._manager._gateway_service_factories:
-            raise ValueError(f"gateway service {clean!r} is already registered")
-        return self._register_entry(
-            "gateway_service",
-            clean,
-            self._manager._gateway_service_factories,
-            factory,
-            "Plugin %s registered gateway service: %s",
-            clean,
-        )
-
-    def register_gateway_prompt_provider(
-        self, name: str, callback: Callable
-    ) -> PluginRegistration:
-        """Register a session-stable gateway prompt contributor."""
-        clean = str(name or "").strip()
-        if not clean or not callable(callback):
-            raise ValueError("gateway prompt provider requires a name and callback")
-        if clean in self._manager._gateway_prompt_providers:
-            raise ValueError(f"gateway prompt provider {clean!r} is already registered")
-        return self._register_entry(
-            "gateway_prompt_provider",
-            clean,
-            self._manager._gateway_prompt_providers,
-            callback,
-            "Plugin %s registered gateway prompt provider: %s",
-            clean,
-        )
 
     def _register_scoped_provider(
         self, provider: Any, *, kind: str, base_class: type, registry: Any, label: str,
@@ -1190,7 +1156,7 @@ def _resolve_hook_callback_timeout() -> float:
     return timeout
 
 
-class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
+class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin, PluginManagerGatewayRuntimeMixin):
     """Central manager that discovers, loads, and invokes plugins."""
 
     def __init__(self, scope_key: Optional[str] = None) -> None:
@@ -1563,14 +1529,6 @@ class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
         """``(action_id, callback, plugin_name)`` tuples for the Slack adapter to wire at connect."""
         return list(self._slack_action_handlers)
 
-    def get_gateway_service_factories(self) -> dict[str, Callable]:
-        """Return a snapshot of plugin gateway service factories."""
-        return dict(self._gateway_service_factories)
-
-    def get_gateway_prompt_providers(self) -> dict[str, Callable]:
-        """Return a snapshot of session-stable gateway prompt contributors."""
-        return dict(self._gateway_prompt_providers)
-
     def get_platform_handler_factories(self, platform: str) -> list[tuple]:
         """``(factory, plugin_name)`` tuples for one platform; adapters call ``factory(native,
         adapter)`` at connect (see :meth:`PluginContext.register_platform_handler`)."""
@@ -1810,16 +1768,6 @@ def discover_plugins(force: bool = False) -> None:
     background discovery instead of racing a second scan."""
     _join_background_discovery()
     get_plugin_manager().discover_and_load(force=force)
-
-
-def get_gateway_service_factories() -> dict[str, Callable]:
-    """Return registered gateway background-service factories."""
-    return get_plugin_manager().get_gateway_service_factories()
-
-
-def get_gateway_prompt_providers() -> dict[str, Callable]:
-    """Return registered gateway system-prompt contributors."""
-    return get_plugin_manager().get_gateway_prompt_providers()
 
 
 _background_discovery_thread: Optional[threading.Thread] = None

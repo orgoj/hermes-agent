@@ -1,3 +1,4 @@
+# health: allow FILE_LINES -- downstream fork: call sites of the plugin gateway runtime (DOWNSTREAM-MAINTENANCE.md); the behaviour lives in siblings
 """Stop/drain/restart, scale-to-zero and active-work accounting methods for GatewayRunner.
 
 Split out of ``gateway/run.py``; bound onto ``GatewayRunner`` via the MRO.
@@ -28,6 +29,7 @@ from gateway.restart import (
     effective_stop_drain_timeout, effective_stop_watchdog_delay, resolve_cron_drain_budget
 )
 from gateway.run_common import _UNSET
+from gateway.run_plugin_runtime import shutdown_plugin_gateway_services
 from gateway.run_shutdown_session_end import GatewaySessionEndMixin
 from gateway.shutdown_watchdog import arm_shutdown_watchdog, resolve_shutdown_watchdog_delay
 
@@ -1861,7 +1863,7 @@ class GatewayShutdownMixin(GatewaySessionEndMixin):
         stop_watchdog = getattr(self, "_stop_systemd_watchdog", None)
         if callable(stop_watchdog):
             await stop_watchdog()
-        await self._shutdown_plugin_gateway_services()
+        await shutdown_plugin_gateway_services(self)
         await self._cancel_secondary_profile_reconnect_tasks()
         # Notify all chats with active agents BEFORE draining — adapters are still connected here.
         await self._notify_active_sessions_of_shutdown()

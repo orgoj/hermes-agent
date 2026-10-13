@@ -194,20 +194,17 @@ scripts/run_tests.sh \
   tests/gateway/test_queue_consumption.py \
   tests/hermes_cli/test_cli_lifecycle_hooks.py \
   tests/hermes_cli/test_plugins.py \
+  tests/hermes_cli/test_plugins_gateway_runtime.py \
   tests/hermes_cli/test_downstream_update_guard.py
-source .venv/bin/activate
-ruff check \
-  agent/delegation_context.py cli.py gateway/platforms/base.py gateway/platforms/event.py \
-  gateway/plugin_context.py gateway/run.py gateway/run_busy.py gateway/run_plugin_runtime.py \
-  gateway/run_shutdown.py gateway/run_startup.py gateway/run_turn.py gateway/run_turn_runner.py \
-  hermes_cli/plugins.py hermes_cli/plugins_ledger.py hermes_cli/plugins_loader.py \
-  hermes_cli/update_cmd.py \
-  tests/gateway/test_plugin_runtime.py \
-  tests/gateway/test_queue_consumption.py \
-  tests/hermes_cli/test_cli_lifecycle_hooks.py \
-  tests/hermes_cli/test_plugins.py tests/hermes_cli/test_downstream_update_guard.py \
-  tools/environments/local.py
+python scripts/check --only health,agents-md,ruff --base upstream/main
 ```
+
+`--base upstream/main` judges only the downstream diff; the default base would
+count every merged upstream commit as new code. Downstream behaviour lives in
+siblings (`gateway/run_plugin_runtime.py`, `gateway/plugin_context.py`,
+`hermes_cli/plugins_gateway_runtime.py`); upstream facades over the size cap
+carry only call sites and a line-1 `# health: allow FILE_LINES` waiver. Keep
+new downstream code out of those facades instead of growing the waivers.
 
 Also run the standalone plugin suite directly from `~/projects/hermes-hcom-plugin`
 without requiring writable cache directories inside that checkout:
