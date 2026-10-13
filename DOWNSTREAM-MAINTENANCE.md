@@ -26,7 +26,20 @@ by its removal. Do not base an upstream PR on that history.
 
 ## Current maintenance checkpoint
 
-On 2026-10-07 `main` merged `upstream/main` through `05eecbcd97` (merge
+On 2026-10-13 `main` merged `upstream/main` through `63d0b94120` (merge
+`914a78847b`). Conflicts in `hermes_cli/plugins.py` (builtin generics) and
+`hermes_cli/update_cmd.py` (update block marker beside upstream's git self-heal)
+kept both sides. Upstream enabled UP006/UP037/PLR0402; follow-up `ea783b9830`
+moved the downstream runtime to builtin generics and imported `asyncio` for the
+completion-future annotation in the leaf `gateway/platforms/event.py`. The
+focused Hermes suite passed 112 tests, the plugin suite passed 14, and Ruff
+passed for both repositories. The gateway replaced PID 2908 with PID 275921,
+Telegram reached polling mode, and after `/new` hcom request #153581 to `kato`
+was answered (#153589) and the gateway-owned listener returned to `listening`.
+`python scripts/check --base upstream/main` still reports pre-existing
+downstream health findings (BLE001, FILE_LINES) and the `AGENTS.md` size cap.
+
+Prior checkpoint (2026-10-07): merged `upstream/main` through `05eecbcd97` (merge
 `f6f000bd6a`). Upstream refactored `cli.py` run loops into `CLITuiRuntimeMixin`
 (`hermes_cli/cli_tui_runtime_mixin.py`) and updated platform adapters with
 requeue back-off. Downstream hooks (`on_cli_turn_start`, `on_cli_turn_end`,
