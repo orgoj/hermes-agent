@@ -133,7 +133,7 @@ class GatewayBusySessionMixin:
 
     def _dequeue_inband_pending_event(
         self, session_key: str, adapter: Any
-    ) -> Optional["MessageEvent"]:
+    ) -> Optional[MessageEvent]:
         """Return only events whose completion does not depend on adapter delivery."""
         from gateway.run import _dequeue_pending_event
 
@@ -147,7 +147,7 @@ class GatewayBusySessionMixin:
 
     @staticmethod
     def _restore_delivery_owned_event(
-        session_key: str, adapter: Any, event: Optional["MessageEvent"]
+        session_key: str, adapter: Any, event: Optional[MessageEvent]
     ) -> bool:
         if event is None or not event._processing_completion_futures:
             return False

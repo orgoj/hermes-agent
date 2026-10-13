@@ -4,6 +4,7 @@ A leaf module: adapters, helpers and the runner import it, so it must not import
 gateway.platforms.*.
 """
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -106,10 +107,10 @@ class MessageEvent:
     _gateway_accepted: bool = field(default=False, init=False, repr=False, compare=False)
     # Process-local completion waiters for durable plugin ingress. These stay out of metadata
     # because metadata may be logged or persisted.
-    _processing_completion_futures: List["asyncio.Future[ProcessingOutcome]"] = field(
+    _processing_completion_futures: list["asyncio.Future[ProcessingOutcome]"] = field(
         default_factory=list, repr=False, compare=False
     )
-    _plugin_subprocess_env: Dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    _plugin_subprocess_env: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
     # Run-owned final presentation snapshot; never deserialized from ingress metadata.
     _notification_reply_muted: Optional[bool] = field(default=None, init=False, repr=False, compare=False)
 

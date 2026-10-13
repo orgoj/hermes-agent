@@ -231,7 +231,7 @@ async def test_gateway_service_lifecycle_is_owned_and_bounded():
     runner = object.__new__(GatewayRunner)
     runner._plugin_gateway_services = {}
 
-    import hermes_cli.plugins as plugins
+    from hermes_cli import plugins
 
     original = plugins.get_gateway_service_factories
     plugins.get_gateway_service_factories = lambda: {"test": lambda _runner: Service()}

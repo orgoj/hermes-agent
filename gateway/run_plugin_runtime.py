@@ -6,7 +6,7 @@ import asyncio
 import dataclasses
 import inspect
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from gateway.platforms.event import MessageEvent, ProcessingOutcome
 from gateway.session import SessionSource
@@ -26,8 +26,8 @@ class GatewayPluginRuntimeMixin:
         user_id: str,
         user_name: str = "",
         message_id: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
-        subprocess_env: Optional[Dict[str, str]] = None,
+        metadata: Optional[dict[str, Any]] = None,
+        subprocess_env: Optional[dict[str, str]] = None,
         visible_inbound_text: Optional[str] = None,
     ) -> ProcessingOutcome:
         """Dispatch trusted plugin ingress through an existing platform session."""

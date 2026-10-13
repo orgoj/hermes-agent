@@ -3696,7 +3696,7 @@ class GatewayRunner(
         self._recent_voice_transcripts: dict[tuple, list[tuple[float, str]]] = {}
         # Background tasks kept referenced so they are not garbage-collected mid-execution.
         self._background_tasks: set = set()
-        self._plugin_gateway_services: Dict[str, Any] = {}
+        self._plugin_gateway_services: dict[str, Any] = {}
         # Event-loop liveness heartbeat: rewritten every 30s while the loop dispatches; supervisors use
         # the file mtime / updated_at to tell "process alive" from "loop frozen".
         # See #66892.
