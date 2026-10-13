@@ -1,5 +1,10 @@
 # Dippy config for hermes-agent
 
+allow .venv/bin/python -m pytest *
+allow .venv/bin/ruff *
+allow python scripts/check *
+allow scripts/run_tests.sh *
+
 # Venv activation
 allow source .venv/bin/activate
 allow source venv/bin/activate
